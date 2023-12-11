@@ -38,7 +38,6 @@ internal void Win32UpdateWindow(HDC DeviceContext, int X, int Y, int Width, int 
 
 LRESULT CALLBACK Win32WindowProc(HWND Window, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
-    OutputDebugString(TEXT("WindowProc\n"));
     switch (uMsg)
     {
     case WM_CLOSE:
@@ -62,6 +61,7 @@ LRESULT CALLBACK Win32WindowProc(HWND Window, UINT uMsg, WPARAM wParam, LPARAM l
     case WM_PAINT:
     {
         PAINTSTRUCT Paint;
+        // All painting occurs here, between BeginPaint and EndPaint.
         HDC DeviceContext = BeginPaint(Window, &Paint);
         int X = Paint.rcPaint.left;
         int Y = Paint.rcPaint.top;
@@ -69,7 +69,6 @@ LRESULT CALLBACK Win32WindowProc(HWND Window, UINT uMsg, WPARAM wParam, LPARAM l
         int Height = Paint.rcPaint.bottom - Paint.rcPaint.top;
         Win32UpdateWindow(DeviceContext, X, Y, Width, Height);
 
-        // All painting occurs here, between BeginPaint and EndPaint.
         FillRect(DeviceContext, &Paint.rcPaint, (HBRUSH)(COLOR_WINDOW + 1));
 
         EndPaint(Window, &Paint);
@@ -87,17 +86,17 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, PSTR CommandLin
 
     wc.lpfnWndProc = Win32WindowProc;
     wc.hInstance = Instance;
-    wc.lpszClassName = TEXT("WindowClass");
+    wc.lpszClassName = TEXT("Handmade");
 
     RegisterClass(&wc);
 
     // Create the window.
 
     HWND hwnd = CreateWindowEx(
-        0,                                // Optional window styles.
-        wc.lpszClassName,                 // Window class
-        TEXT("Learn to Program Windows"), // Window text
-        WS_OVERLAPPEDWINDOW,              // Window style
+        0,                      // Optional window styles.
+        wc.lpszClassName,       // Window class
+        TEXT("Handemade Hero"), // Window text
+        WS_OVERLAPPEDWINDOW,    // Window style
 
         // Size and position
         CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
