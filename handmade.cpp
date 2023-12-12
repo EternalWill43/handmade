@@ -18,7 +18,6 @@ internal void RenderWeirdGradient(int XOffset, int YOffset)
 {
     int Pitch = BitmapWidth * 4;
     uint8 *Row = (uint8 *)BitmapMemory;
-    OutputDebugStringA("About to loop");
     for (int Y = 0; Y < BitmapHeight; ++Y)
     {
         uint32 *Pixel = (uint32 *)Row;
@@ -176,6 +175,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, PSTR CommandLin
         ReleaseDC(hwnd, DeviceContext);
 
         ++XOffset;
+        YOffset += 2;
     }
 
     return 0;
