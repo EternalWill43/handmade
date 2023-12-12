@@ -51,10 +51,10 @@ internal void Win32ResizeDIBSection(int Width, int Height)
     BitmapMemory = VirtualAlloc(0, BitmapMemorySize, MEM_COMMIT, PAGE_READWRITE);
 }
 
-internal void Win32UpdateWindow(HDC DeviceContext, RECT *WindowRect, int X, int Y, int Width, int Height)
+internal void Win32UpdateWindow(HDC DeviceContext, RECT WindowRect, int X, int Y, int Width, int Height)
 {
-    int WindowWidth = WindowRect->right - WindowRect->left;
-    int WindowHeight = WindowRect->bottom - WindowRect->top;
+    int WindowWidth = WindowRect.right - WindowRect.left;
+    int WindowHeight = WindowRect.bottom - WindowRect.top;
     StretchDIBits(DeviceContext, 0, 0, BitmapWidth, BitmapHeight, 0, 0, WindowWidth, WindowHeight, BitmapMemory, &BitmapInfo, DIB_RGB_COLORS, SRCCOPY);
 }
 
@@ -102,7 +102,7 @@ LRESULT CALLBACK Win32WindowProc(HWND Window, UINT uMsg, WPARAM wParam, LPARAM l
         int Height = Paint.rcPaint.bottom - Paint.rcPaint.top;
         RECT ClientRect;
         GetClientRect(Window, &ClientRect);
-        Win32UpdateWindow(DeviceContext, &ClientRect, X, Y, Width, Height);
+        Win32UpdateWindow(DeviceContext, ClientRect, X, Y, Width, Height);
 
         EndPaint(Window, &Paint);
     }
@@ -126,10 +126,10 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, PSTR CommandLin
     // Create the window.
 
     HWND hwnd = CreateWindowEx(
-        0,                      // Optional window styles.
-        wc.lpszClassName,       // Window class
-        TEXT("Handemade Hero"), // Window text
-        WS_OVERLAPPEDWINDOW,    // Window style
+        0,                                             // Optional window styles.
+        wc.lpszClassName,                              // Window class
+        TEXT("Handemade Hero"),                        // Window text
+        CS_HREDRAW | CS_VREDRAW | WS_OVERLAPPEDWINDOW, // Window style
 
         // Size and position
         CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
@@ -171,7 +171,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, PSTR CommandLin
         GetClientRect(hwnd, &ClientRect);
         int WindowWidth = ClientRect.right - ClientRect.left;
         int WindowHeight = ClientRect.bottom - ClientRect.top;
-        Win32UpdateWindow(DeviceContext, &ClientRect, 0, 0, WindowWidth, WindowHeight);
+        Win32UpdateWindow(DeviceContext, ClientRect, 0, 0, WindowWidth, WindowHeight);
         ReleaseDC(hwnd, DeviceContext);
 
         ++XOffset;
