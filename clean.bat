@@ -1,2 +1,5 @@
-del handmade.exe
-del handmade.obj
+del *.exe
+del *.obj
+del *.pdb
+del *.ilk
+del *.gpr
