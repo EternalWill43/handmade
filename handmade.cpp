@@ -1,10 +1,13 @@
-#include <stdint.h>
-#include <windows.h>
 #include <dsound.h>
-#include <cstdint>
+#include <fstream>
+#include <objbase.h>
+#include <stdint.h>
+#include <string>
+#include <thread>
+#include <vector>
+#include <windows.h>
 #include <Xinput.h>
 #include <xaudio2.h>
-
 
 #define local_persist static
 #define global_variable static
@@ -27,6 +30,87 @@ struct win32_offscreen_buffer
     int Height;
     int Pitch;
 };
+
+struct WAVHeader
+{
+    char riff[4];
+    unsigned int fileSize;
+    char wave[4];
+    char fmt[4];
+    unsigned int fmtSize;
+    unsigned short format;
+    unsigned short channels;
+    unsigned int sampleRate;
+    unsigned int byteRate;
+    unsigned short blockAlign;
+    unsigned short bitsPerSample;
+    char data[4];
+    unsigned int dataSize;
+};
+
+bool ParseWAVHeader(const std::string &filename, WAVEFORMATEX &waveFormat, std::vector<char> &audioData)
+{
+    std::ifstream file(filename, std::ios::binary);
+    if (!file.is_open())
+    {
+        OutputDebugStringA("Failed to open file: ");
+        return false;
+    }
+
+    WAVHeader header;
+    file.read(reinterpret_cast<char *>(&header), sizeof(WAVHeader));
+
+    if (strncmp(header.riff, "RIFF", 4) != 0 || strncmp(header.wave, "WAVE", 4) != 0)
+    {
+        OutputDebugStringA("Invalid WAV file");
+        return false;
+    }
+
+    waveFormat.wFormatTag = header.format;
+    waveFormat.nChannels = header.channels;
+    waveFormat.nSamplesPerSec = header.sampleRate;
+    waveFormat.wBitsPerSample = header.bitsPerSample;
+    waveFormat.nBlockAlign = header.blockAlign;
+    waveFormat.nAvgBytesPerSec = header.byteRate;
+    waveFormat.cbSize = 0;
+#ifdef DEBUG
+    for (int i = 0; i < 4; ++i)
+    {
+        OutputDebugStringA(&header.riff[i]);
+    }
+    for (int i = 0; i < 4; ++i)
+    {
+        OutputDebugStringA(&header.wave[i]);
+    }
+    for (int i = 0; i < 4; ++i)
+    {
+        OutputDebugStringA(&header.fmt[i]);
+    }
+    for (int i = 0; i < 4; ++i)
+    {
+        OutputDebugStringA(&header.data[i]);
+    }
+    OutputDebugStringA("Format: ");
+    OutputDebugStringA(std::to_string(header.format).c_str());
+    OutputDebugStringA("Channels: ");
+    OutputDebugStringA(std::to_string(header.channels).c_str());
+    OutputDebugStringA("Sample Rate: ");
+    OutputDebugStringA(std::to_string(header.sampleRate).c_str());
+    OutputDebugStringA("Bits Per Sample: ");
+    OutputDebugStringA(std::to_string(header.bitsPerSample).c_str());
+    OutputDebugStringA("Byte Rate: ");
+    OutputDebugStringA(std::to_string(header.byteRate).c_str());
+    OutputDebugStringA("Block Align: ");
+    OutputDebugStringA(std::to_string(header.blockAlign).c_str());
+    OutputDebugStringA("Data Size: ");
+    OutputDebugStringA(std::to_string(header.dataSize).c_str());
+#endif
+    // Read audio data
+    audioData.resize(header.dataSize);
+    file.read(audioData.data(), header.dataSize);
+
+    return true;
+}
 
 #define X_INPUT_GET_STATE(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_STATE *pState)
 #define X_INPUT_SET_STATE(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_VIBRATION *pVibration)
@@ -58,34 +142,184 @@ internal void Win32LoadXInput(void)
 #define DIRECT_SOUND_CREATE(name) HRESULT WINAPI name(LPCGUID pcGuidDevice, LPDIRECTSOUND *ppDS, LPUNKNOWN pUnkOuter)
 typedef DIRECT_SOUND_CREATE(direct_sound_create);
 
-void Win32InitXAudio2(HWND Window) {
-    IXAudio2* pXAudio2 = nullptr;
-    if (FAILED(CoInitializeEx(nullptr, COINIT_MULTITHREADED))) {
-        // Handle failure
+void Win32InitXAudio2(HWND Window, IXAudio2 **pXAudio2)
+{
+    // TODO: Import dynamically with funciton pointer
+    if (FAILED(CoInitializeEx(nullptr, COINIT_MULTITHREADED)))
+    {
+        // TODO: Handle Failure
         return;
     }
 
-    if (FAILED(XAudio2Create(&pXAudio2, 0, XAUDIO2_DEFAULT_PROCESSOR))) {
+    if (FAILED(XAudio2Create(pXAudio2, 0, XAUDIO2_DEFAULT_PROCESSOR)))
+    {
         // Handle failure
         CoUninitialize();
         return;
     }
 
-    IXAudio2MasteringVoice* pMasterVoice = nullptr;
-    if (FAILED(pXAudio2->CreateMasteringVoice(&pMasterVoice))) {
+    IXAudio2MasteringVoice *pMasterVoice = nullptr;
+    if (FAILED((*pXAudio2)->CreateMasteringVoice(&pMasterVoice)))
+    {
         // Handle failure
-        pXAudio2->Release();
+        (*pXAudio2)->Release();
         CoUninitialize();
         return;
     }
 
     // XAudio2 is successfully initialized and ready to use.
-    // pXAudio2 and pMasterVoice are now initialized and can be used to play audio.
+    // pXAudio2 and pMasterVoice are now initialized and can be used to play
+    // audio.
+    (*pXAudio2)->CreateMasteringVoice(&pMasterVoice);
 
     // When done, clean up:
     // pMasterVoice->DestroyVoice();
     // pXAudio2->Release();
     // CoUninitialize();
+}
+
+void PlayWavFile(IXAudio2 *pIXAudio)
+{
+    // Open the file
+    std::ifstream file("oblique.wav", std::ios::binary | std::ios::ate);
+    if (!file.is_open())
+    {
+        return;
+    }
+
+    // Get the size
+    std::streamsize size = file.tellg();
+    file.seekg(0, std::ios::beg);
+
+    // Read the data
+    std::vector<char> buffer(size);
+    if (file.read(buffer.data(), size))
+    {
+        // Parse the wav file
+        WAVEFORMATEX *waveFormat = (WAVEFORMATEX *)buffer.data();
+        XAUDIO2_BUFFER xAudioBuffer = {0};
+        xAudioBuffer.AudioBytes = size - sizeof(WAVEFORMATEX);
+        // xAudioBuffer.pAudioData = buffer.data() + sizeof(WAVEFORMATEX);
+        xAudioBuffer.Flags = XAUDIO2_END_OF_STREAM;
+        IXAudio2SourceVoice *pSourceVoice;
+        if (FAILED(pIXAudio->CreateSourceVoice(&pSourceVoice, waveFormat)))
+        {
+            return;
+        }
+        pSourceVoice->SubmitSourceBuffer(&xAudioBuffer);
+        pSourceVoice->Start(0);
+        Sleep(2000);
+        pSourceVoice->Stop();
+        pSourceVoice->DestroyVoice();
+    }
+}
+
+void PlayWavFile2(IXAudio2 *pIXAudio, const std::string &filename)
+{
+    // Open the WAV file
+    std::ifstream file(filename, std::ios::binary);
+    OutputDebugStringA("Playing file: ");
+    if (!file.is_open())
+    {
+        OutputDebugStringA("Failed to open file: ");
+        return;
+    }
+
+    // Read and parse the WAV header to fill this structure
+    WAVEFORMATEX waveFormat = {};
+    std::vector<char> audioData;
+    if (!ParseWAVHeader(filename, waveFormat, audioData))
+    {
+        OutputDebugStringA("Failed to parse WAV header: ");
+        return;
+    }
+
+    IXAudio2SourceVoice *pSourceVoice;
+    if (FAILED(pIXAudio->CreateSourceVoice(&pSourceVoice, &waveFormat)))
+    {
+        OutputDebugStringA("Failed to create source voice: ");
+        return;
+    }
+
+    // Read the audio data
+    std::vector<char> audioData2(std::istreambuf_iterator<char>(file), {});
+
+    XAUDIO2_BUFFER buffer = {0};
+    buffer.AudioBytes = static_cast<UINT32>(audioData2.size());
+    buffer.pAudioData = reinterpret_cast<const BYTE *>(audioData2.data());
+    buffer.Flags = XAUDIO2_END_OF_STREAM;
+
+    pSourceVoice->SubmitSourceBuffer(&buffer);
+
+    pSourceVoice->Start(0);
+    XAUDIO2_VOICE_STATE state;
+    // Wait for the buffer to be consumed
+    // Ideally, you should use voice callbacks or another method to know when playback is finished
+    do
+    {
+        pSourceVoice->GetState(&state);
+        Sleep(100);
+    } while (state.BuffersQueued > 0);
+    pSourceVoice->Stop();
+    pSourceVoice->DestroyVoice();
+    OutputDebugStringA("Done playing file: ");
+}
+
+void PlayXAudioSquareWave(IXAudio2 *pIXAudio)
+{
+    WAVEFORMATEX WaveFormat = {};
+    DWORD SamplesPerSecond = 48000;
+    WaveFormat.wFormatTag = WAVE_FORMAT_PCM;
+    WaveFormat.nChannels = 2;
+    WaveFormat.nSamplesPerSec = SamplesPerSecond;
+    WaveFormat.wBitsPerSample = 16;
+    WaveFormat.nBlockAlign =
+        (WaveFormat.nChannels * WaveFormat.wBitsPerSample) / 8;
+    WaveFormat.nAvgBytesPerSec =
+        WaveFormat.nSamplesPerSec * WaveFormat.nBlockAlign;
+    WaveFormat.cbSize = 0;
+    IXAudio2SourceVoice *pSourceVoice;
+    if (FAILED(pIXAudio->CreateSourceVoice(&pSourceVoice, &WaveFormat)))
+    {
+        return;
+    }
+    pSourceVoice->SetVolume(0.2f);
+    float frequency = 440.0f;
+    const float duration = 2.0f;
+    const int totalSamples = 48000 * 2;
+    int samplesPerWaveLength = WaveFormat.nSamplesPerSec / frequency;
+    short amplitude = 50;
+    int16_t audioData[48000 * 2 * 2];
+    for (int i = 0; i < totalSamples; ++i)
+    {
+        short value =
+            (i / samplesPerWaveLength) % 2 == 0 ? amplitude : -amplitude;
+        for (int channel = 0; channel < WaveFormat.nChannels; ++channel)
+        {
+            audioData[i * WaveFormat.nChannels + channel] = value;
+        }
+    }
+
+    XAUDIO2_BUFFER buffer = {0};
+    buffer.AudioBytes = static_cast<UINT32>(
+        totalSamples * WaveFormat.nChannels * sizeof(int16_t));
+    buffer.pAudioData = reinterpret_cast<const BYTE *>(audioData);
+    buffer.Flags = XAUDIO2_END_OF_STREAM;
+
+    pSourceVoice->SubmitSourceBuffer(&buffer);
+
+    pSourceVoice->Start(0);
+    Sleep(2000);
+    pSourceVoice->Stop();
+    pSourceVoice->DestroyVoice();
+}
+
+internal void XAudioThread(HWND Window, IXAudio2 *pIXAudio)
+{
+    PlayWavFile2(pIXAudio, "oblique.wav");
+    // Destroy master voice
+    pIXAudio->Release();
+    CoUninitialize();
 }
 
 internal void Win32InitDSound(HWND Window, int32_t SamplesPerSecond, int32_t BufferSize)
@@ -294,8 +528,6 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, PSTR CommandLin
 
     RegisterClass(&wc);
 
-    // Create the window.
-
     HWND hwnd = CreateWindowEx(
         0,                      // Optional window styles.
         wc.lpszClassName,       // Window class
@@ -318,7 +550,6 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, PSTR CommandLin
 
     ShowWindow(hwnd, ShowCommand);
 
-
     GlobalRunning = true;
     int SamplesPerSecond = 48000;
     int XOffset = 0;
@@ -327,11 +558,14 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, PSTR CommandLin
     int Hz = 256;
     int16_t ToneVolume = 3000;
     int SquareWaveCounter = 0;
-    int SquareWavePeriod = SamplesPerSecond/Hz;
+    int SquareWavePeriod = SamplesPerSecond / Hz;
     int BytesPerSample = sizeof(int16_t) * 2;
     int SecondaryBufferSize = SamplesPerSecond * BytesPerSample;
     Win32InitDSound(hwnd, SamplesPerSecond, SecondaryBufferSize);
-    GlobalSecondaryBuffer->Play(0, 0, DSBPLAY_LOOPING);
+    // GlobalSecondaryBuffer->Play(0, 0, DSBPLAY_LOOPING);
+    IXAudio2 *pIXAudio;
+    Win32InitXAudio2(hwnd, &pIXAudio);
+    std::thread AudioThread(XAudioThread, hwnd, pIXAudio);
     while (GlobalRunning)
     {
 
@@ -411,7 +645,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, PSTR CommandLin
             {
                 SquareWaveCounter = SquareWavePeriod;
             }
-            int16_t SampleValue = ((RunningSampleIndex / (SquareWavePeriod/2)) % 2) ? ToneVolume : -ToneVolume;
+            int16_t SampleValue = ((RunningSampleIndex / (SquareWavePeriod / 2)) % 2) ? ToneVolume : -ToneVolume;
             *SampleOut++ = SampleValue;
             *SampleOut++ = SampleValue;
             ++RunningSampleIndex;
@@ -422,7 +656,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, PSTR CommandLin
             {
                 SquareWaveCounter = SquareWavePeriod;
             }
-            int16_t SampleValue = ((RunningSampleIndex / (SquareWavePeriod/2)) % 2) ? ToneVolume : -ToneVolume;
+            int16_t SampleValue = ((RunningSampleIndex / (SquareWavePeriod / 2)) % 2) ? ToneVolume : -ToneVolume;
             *SampleOut++ = SampleValue;
             *SampleOut++ = SampleValue;
             ++RunningSampleIndex;
