@@ -74,22 +74,21 @@ bool ParseWAVHeader(const std::string &filename, WAVEFORMATEX &waveFormat, std::
     waveFormat.nAvgBytesPerSec = header.byteRate;
     waveFormat.cbSize = 0;
 #ifdef DEBUG
-    for (int i = 0; i < 4; ++i)
-    {
-        OutputDebugStringA(&header.riff[i]);
-    }
-    for (int i = 0; i < 4; ++i)
-    {
-        OutputDebugStringA(&header.wave[i]);
-    }
-    for (int i = 0; i < 4; ++i)
-    {
-        OutputDebugStringA(&header.fmt[i]);
-    }
-    for (int i = 0; i < 4; ++i)
-    {
-        OutputDebugStringA(&header.data[i]);
-    }
+#include <stdio.h>
+    AttachConsole(ATTACH_PARENT_PROCESS);
+
+    // Redirect standard output to the console
+    freopen("CONOUT$", "w", stdout);
+
+    printf("%s\n", header.riff);
+    char buffer[5];
+    memcpy(buffer, header.riff, 4);
+    buffer[4] = '\0';
+    OutputDebugStringA(buffer);
+    OutputDebugStringA("----------");
+    OutputDebugStringA(header.wave);
+    OutputDebugStringA(header.fmt);
+    OutputDebugStringA(header.data);
     OutputDebugStringA("Format: ");
     OutputDebugStringA(std::to_string(header.format).c_str());
     OutputDebugStringA("Channels: ");
