@@ -137,17 +137,20 @@ global_variable x_input_set_state *XInputSetState_ = XInputSetStateStub;
 #define XInputGetState XInputGetState_
 #define XInputSetState XInputSetState_
 
-enum SetVol
+enum AudioStatus
 {
-    VOL_UP,
+    VOL_UP, // 0
     VOL_DOWN,
+    AUDIO_PAUSE,
+    AUDIO_PLAY,
+    AUDIO_RESTART,
 };
 
 global_variable IXAudio2SourceVoice *GlobalSourceVoice;
-void ChangeVolume(SetVol volume)
+void AudioControl(AudioStatus status)
 {
-    printf("Changing volume\n");
-    switch (volume)
+    printf("Changing volume with arg %d\n", status);
+    switch (status)
     {
         case VOL_UP:
         {
@@ -160,6 +163,7 @@ void ChangeVolume(SetVol volume)
                 assert(result == S_OK);
             }
         }
+        break;
         case VOL_DOWN:
         {
             float volume;
@@ -170,6 +174,26 @@ void ChangeVolume(SetVol volume)
                 GlobalSourceVoice->SetVolume(volume);
             }
         }
+        break;
+        case AUDIO_PAUSE:
+        {
+            GlobalSourceVoice->Stop();
+        }
+        break;
+        case AUDIO_PLAY:
+        {
+            GlobalSourceVoice->Start();
+        }
+        break;
+        case AUDIO_RESTART:
+        {
+            // FIXME: Decide what to play, calling Start() without a buffer
+            // crashes app.
+            GlobalSourceVoice->Stop();
+            GlobalSourceVoice->FlushSourceBuffers();
+            GlobalSourceVoice->Start();
+        }
+        break;
     }
 }
 
@@ -480,42 +504,61 @@ LRESULT CALLBACK Win32WindowProc(HWND Window, UINT uMsg, WPARAM wParam,
             bool WasDown = ((lParam & (1 << 31)) == 0);
             if (IsDown != WasDown)
             {
-                if (VKCode == 'W') // W Key
+                switch (VKCode)
                 {
-                    W_STATE = true;
-                    S_STATE = false;
-                }
-                else if (VKCode == 'S') // S Key
-                {
-                    W_STATE = false;
-                    S_STATE = true;
-                }
-                else if (VKCode == 'A') // A Key
-                {
-                    A_STATE = true;
-                    D_STATE = false;
-                }
-                else if (VKCode == 'D') // D Key
-                {
-                    D_STATE = true;
-                    A_STATE = false;
-                }
-                else if (VKCode == 'U')
-                {
-                    ChangeVolume(VOL_UP);
-                }
-                else if (VKCode == VK_OEM_MINUS)
-                {
-                    ChangeVolume(VOL_DOWN);
-                }
-                else
-                {
-                    OutputDebugStringA("VKCode: ");
-                    OutputDebugStringA(std::to_string(VKCode).c_str());
-                    W_STATE = false;
-                    A_STATE = false;
-                    D_STATE = false;
-                    S_STATE = false;
+                    case 'W':
+                    {
+                        W_STATE = true;
+                        S_STATE = false;
+                    }
+                    break;
+                    case 'S':
+                    {
+                        W_STATE = false;
+                        S_STATE = true;
+                    }
+                    break;
+                    case 'A':
+                    {
+                        A_STATE = true;
+                        D_STATE = false;
+                    }
+                    break;
+                    case 'D':
+                    {
+                        D_STATE = true;
+                        A_STATE = false;
+                    }
+                    break;
+                    case 'U':
+                    {
+                        AudioControl(VOL_UP);
+                    }
+                    break;
+                    case 'P':
+                    {
+                        AudioControl(AUDIO_PAUSE);
+                    }
+                    break;
+                    case 'O':
+                    {
+                        AudioControl(AUDIO_PLAY);
+                    }
+                    break;
+                    case VK_OEM_MINUS:
+                    {
+                        AudioControl(VOL_DOWN);
+                    }
+                    break;
+                    default:
+                    {
+                        OutputDebugStringA("VKCode: ");
+                        OutputDebugStringA(std::to_string(VKCode).c_str());
+                        W_STATE = false;
+                        A_STATE = false;
+                        D_STATE = false;
+                        S_STATE = false;
+                    }
                 }
             }
         }
