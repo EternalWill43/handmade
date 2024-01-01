@@ -1,6 +1,7 @@
 #include <cassert>
 #include <dsound.h>
 #include <fstream>
+#include <math.h>
 #include <objbase.h>
 #include <stdint.h>
 #include <string>
@@ -15,6 +16,8 @@
 #define global_variable static
 #define internal static
 
+#define Pi32 3.14159265359f
+
 typedef uint8_t uint8;
 typedef uint32_t uint32;
 
@@ -24,6 +27,8 @@ global_variable bool S_STATE;
 global_variable bool D_STATE;
 global_variable bool MINUS_STATE;
 global_variable bool PLUS_STATE;
+
+extern IXAudio2SourceVoice *GlobalSourceVoice;
 
 LPDIRECTSOUNDBUFFER GlobalSecondaryBuffer;
 
@@ -35,88 +40,6 @@ struct win32_offscreen_buffer
     int Height;
     int Pitch;
 };
-
-struct WAVHeader
-{
-    char riff[4];
-    unsigned int fileSize;
-    char wave[4];
-    char fmt[4];
-    unsigned int fmtSize;
-    unsigned short format;
-    unsigned short channels;
-    unsigned int sampleRate;
-    unsigned int byteRate;
-    unsigned short blockAlign;
-    unsigned short bitsPerSample;
-    char data[4];
-    unsigned int dataSize;
-};
-
-bool ParseWAVHeader(const std::string &filename, WAVEFORMATEX &waveFormat,
-                    std::vector<char> &audioData)
-{
-    std::ifstream file(filename, std::ios::binary);
-    if (!file.is_open())
-    {
-        OutputDebugStringA("Failed to open file: ");
-        return false;
-    }
-
-    WAVHeader header;
-    file.read(reinterpret_cast<char *>(&header), sizeof(WAVHeader));
-
-    if (strncmp(header.riff, "RIFF", 4) != 0 ||
-        strncmp(header.wave, "WAVE", 4) != 0)
-    {
-        OutputDebugStringA("Invalid WAV file");
-        return false;
-    }
-
-    waveFormat.wFormatTag = header.format;
-    waveFormat.nChannels = header.channels;
-    waveFormat.nSamplesPerSec = header.sampleRate;
-    waveFormat.wBitsPerSample = header.bitsPerSample;
-    waveFormat.nBlockAlign = header.blockAlign;
-    waveFormat.nAvgBytesPerSec = header.byteRate;
-    waveFormat.cbSize = 0;
-#ifdef DEBUG
-#include <stdio.h>
-    AttachConsole(ATTACH_PARENT_PROCESS);
-
-    // Redirect standard output to the console
-    freopen("CONOUT$", "w", stdout);
-
-    printf("%s\n", header.riff);
-    char buffer[5];
-    memcpy(buffer, header.riff, 4);
-    buffer[4] = '\0';
-    OutputDebugStringA(buffer);
-    OutputDebugStringA("----------");
-    OutputDebugStringA(header.wave);
-    OutputDebugStringA(header.fmt);
-    OutputDebugStringA(header.data);
-    OutputDebugStringA("Format: ");
-    OutputDebugStringA(std::to_string(header.format).c_str());
-    OutputDebugStringA("Channels: ");
-    OutputDebugStringA(std::to_string(header.channels).c_str());
-    OutputDebugStringA("Sample Rate: ");
-    OutputDebugStringA(std::to_string(header.sampleRate).c_str());
-    OutputDebugStringA("Bits Per Sample: ");
-    OutputDebugStringA(std::to_string(header.bitsPerSample).c_str());
-    OutputDebugStringA("Byte Rate: ");
-    OutputDebugStringA(std::to_string(header.byteRate).c_str());
-    OutputDebugStringA("Block Align: ");
-    OutputDebugStringA(std::to_string(header.blockAlign).c_str());
-    OutputDebugStringA("Data Size: ");
-    OutputDebugStringA(std::to_string(header.dataSize).c_str());
-#endif
-    // Read audio data
-    audioData.resize(header.dataSize);
-    file.read(audioData.data(), header.dataSize);
-
-    return true;
-}
 
 #define X_INPUT_GET_STATE(name)                                                \
     DWORD WINAPI name(DWORD dwUserIndex, XINPUT_STATE *pState)
@@ -137,66 +60,6 @@ global_variable x_input_set_state *XInputSetState_ = XInputSetStateStub;
 #define XInputGetState XInputGetState_
 #define XInputSetState XInputSetState_
 
-enum AudioStatus
-{
-    VOL_UP, // 0
-    VOL_DOWN,
-    AUDIO_PAUSE,
-    AUDIO_PLAY,
-    AUDIO_RESTART,
-};
-
-global_variable IXAudio2SourceVoice *GlobalSourceVoice;
-void AudioControl(AudioStatus status)
-{
-    printf("Changing volume with arg %d\n", status);
-    switch (status)
-    {
-        case VOL_UP:
-        {
-            float volume;
-            GlobalSourceVoice->GetVolume(&volume);
-            if (volume < 1.0f)
-            {
-                printf("Setting volume to: %f\n", volume);
-                HRESULT result = GlobalSourceVoice->SetVolume(volume + 1.0f);
-                assert(result == S_OK);
-            }
-        }
-        break;
-        case VOL_DOWN:
-        {
-            float volume;
-            GlobalSourceVoice->GetVolume(&volume);
-            if (volume > 0.0f)
-            {
-                volume -= 0.1f;
-                GlobalSourceVoice->SetVolume(volume);
-            }
-        }
-        break;
-        case AUDIO_PAUSE:
-        {
-            GlobalSourceVoice->Stop();
-        }
-        break;
-        case AUDIO_PLAY:
-        {
-            GlobalSourceVoice->Start();
-        }
-        break;
-        case AUDIO_RESTART:
-        {
-            // FIXME: Decide what to play, calling Start() without a buffer
-            // crashes app.
-            GlobalSourceVoice->Stop();
-            GlobalSourceVoice->FlushSourceBuffers();
-            GlobalSourceVoice->Start();
-        }
-        break;
-    }
-}
-
 internal void Win32LoadXInput(void)
 {
     HMODULE XInputLibrary = LoadLibraryA("xinput_1_4.dll");
@@ -213,147 +76,6 @@ internal void Win32LoadXInput(void)
     HRESULT WINAPI name(LPCGUID pcGuidDevice, LPDIRECTSOUND *ppDS,             \
                         LPUNKNOWN pUnkOuter)
 typedef DIRECT_SOUND_CREATE(direct_sound_create);
-
-void Win32InitXAudio2(HWND Window, IXAudio2 **pXAudio2)
-{
-    // TODO: Import dynamically with funciton pointer
-    if (FAILED(CoInitializeEx(nullptr, COINIT_MULTITHREADED)))
-    {
-        // TODO: Handle Failure
-        return;
-    }
-
-    if (FAILED(XAudio2Create(pXAudio2, 0, XAUDIO2_DEFAULT_PROCESSOR)))
-    {
-        // Handle failure
-        CoUninitialize();
-        return;
-    }
-
-    IXAudio2MasteringVoice *pMasterVoice = nullptr;
-    if (FAILED((*pXAudio2)->CreateMasteringVoice(&pMasterVoice)))
-    {
-        // Handle failure
-        (*pXAudio2)->Release();
-        CoUninitialize();
-        return;
-    }
-
-    // XAudio2 is successfully initialized and ready to use.
-    // pXAudio2 and pMasterVoice are now initialized and can be used to play
-    // audio.
-    (*pXAudio2)->CreateMasteringVoice(&pMasterVoice);
-
-    // When done, clean up:
-    // pMasterVoice->DestroyVoice();
-    // pXAudio2->Release();
-    // CoUninitialize();
-}
-
-void PlayWavFile2(IXAudio2 *pIXAudio, const std::string &filename)
-{
-    // Open the WAV file
-    std::ifstream file(filename, std::ios::binary);
-    OutputDebugStringA("Playing file: ");
-    if (!file.is_open())
-    {
-        OutputDebugStringA("Failed to open file: ");
-        return;
-    }
-
-    // Read and parse the WAV header to fill this structure
-    WAVEFORMATEX waveFormat = {};
-    std::vector<char> audioData;
-    if (!ParseWAVHeader(filename, waveFormat, audioData))
-    {
-        OutputDebugStringA("Failed to parse WAV header: ");
-        return;
-    }
-
-    if (FAILED(pIXAudio->CreateSourceVoice(&GlobalSourceVoice, &waveFormat)))
-    {
-        OutputDebugStringA("Failed to create source voice: ");
-        return;
-    }
-
-    std::vector<char> audioData2(std::istreambuf_iterator<char>(file), {});
-
-    XAUDIO2_BUFFER buffer = {0};
-    buffer.AudioBytes = static_cast<UINT32>(audioData2.size());
-    buffer.pAudioData = reinterpret_cast<const BYTE *>(audioData2.data());
-    buffer.Flags = XAUDIO2_END_OF_STREAM;
-
-    GlobalSourceVoice->SubmitSourceBuffer(&buffer);
-
-    GlobalSourceVoice->SetVolume(0.5f);
-    GlobalSourceVoice->Start(0);
-    XAUDIO2_VOICE_STATE state;
-    do
-    {
-        GlobalSourceVoice->GetState(&state);
-        Sleep(100);
-    } while (state.BuffersQueued > 0);
-    GlobalSourceVoice->Stop();
-    GlobalSourceVoice->DestroyVoice();
-    OutputDebugStringA("Done playing file: ");
-}
-
-void PlayXAudioSquareWave(IXAudio2 *pIXAudio)
-{
-    WAVEFORMATEX WaveFormat = {};
-    DWORD SamplesPerSecond = 48000;
-    WaveFormat.wFormatTag = WAVE_FORMAT_PCM;
-    WaveFormat.nChannels = 2;
-    WaveFormat.nSamplesPerSec = SamplesPerSecond;
-    WaveFormat.wBitsPerSample = 16;
-    WaveFormat.nBlockAlign =
-        (WaveFormat.nChannels * WaveFormat.wBitsPerSample) / 8;
-    WaveFormat.nAvgBytesPerSec =
-        WaveFormat.nSamplesPerSec * WaveFormat.nBlockAlign;
-    WaveFormat.cbSize = 0;
-    IXAudio2SourceVoice *pSourceVoice;
-    if (FAILED(pIXAudio->CreateSourceVoice(&pSourceVoice, &WaveFormat)))
-    {
-        return;
-    }
-    pSourceVoice->SetVolume(0.2f);
-    float frequency = 440.0f;
-    const float duration = 2.0f;
-    const int totalSamples = 48000 * 2;
-    int samplesPerWaveLength = WaveFormat.nSamplesPerSec / frequency;
-    short amplitude = 50;
-    int16_t audioData[48000 * 2 * 2];
-    for (int i = 0; i < totalSamples; ++i)
-    {
-        short value =
-            (i / samplesPerWaveLength) % 2 == 0 ? amplitude : -amplitude;
-        for (int channel = 0; channel < WaveFormat.nChannels; ++channel)
-        {
-            audioData[i * WaveFormat.nChannels + channel] = value;
-        }
-    }
-
-    XAUDIO2_BUFFER buffer = {0};
-    buffer.AudioBytes = static_cast<UINT32>(
-        totalSamples * WaveFormat.nChannels * sizeof(int16_t));
-    buffer.pAudioData = reinterpret_cast<const BYTE *>(audioData);
-    buffer.Flags = XAUDIO2_END_OF_STREAM;
-
-    pSourceVoice->SubmitSourceBuffer(&buffer);
-
-    pSourceVoice->Start(0);
-    Sleep(2000);
-    pSourceVoice->Stop();
-    pSourceVoice->DestroyVoice();
-}
-
-internal void XAudioThread(HWND Window, IXAudio2 *pIXAudio)
-{
-    PlayWavFile2(pIXAudio, "oblique.wav");
-    // Destroy master voice
-    pIXAudio->Release();
-    CoUninitialize();
-}
 
 internal void Win32InitDSound(HWND Window, int32_t SamplesPerSecond,
                               int32_t BufferSize)
@@ -530,26 +252,6 @@ LRESULT CALLBACK Win32WindowProc(HWND Window, UINT uMsg, WPARAM wParam,
                         A_STATE = false;
                     }
                     break;
-                    case 'U':
-                    {
-                        AudioControl(VOL_UP);
-                    }
-                    break;
-                    case 'P':
-                    {
-                        AudioControl(AUDIO_PAUSE);
-                    }
-                    break;
-                    case 'O':
-                    {
-                        AudioControl(AUDIO_PLAY);
-                    }
-                    break;
-                    case VK_OEM_MINUS:
-                    {
-                        AudioControl(VOL_DOWN);
-                    }
-                    break;
                     default:
                     {
                         OutputDebugStringA("VKCode: ");
@@ -587,6 +289,70 @@ LRESULT CALLBACK Win32WindowProc(HWND Window, UINT uMsg, WPARAM wParam,
         break;
     }
     return DefWindowProc(Window, uMsg, wParam, lParam);
+}
+
+struct win32_sound_output
+{
+    int SamplesPerSecond;
+    int ToneHz;
+    int16_t ToneVolume;
+    uint32_t RunningSampleIndex;
+    int WavePeriod;
+    int BytesPerSample;
+    int SecondaryBufferSize;
+};
+
+void Win32FillSoundBuffer(win32_sound_output *SoundOutput, DWORD PlayCursor,
+                          DWORD WriteCursor)
+{
+
+    GlobalSecondaryBuffer->GetCurrentPosition(&PlayCursor, &WriteCursor);
+    VOID *Region1;
+    DWORD Region1Size;
+    VOID *Region2;
+    DWORD Region2Size;
+    DWORD BytesToWrite;
+    DWORD ByteToLock = SoundOutput->RunningSampleIndex *
+                       SoundOutput->BytesPerSample %
+                       SoundOutput->SecondaryBufferSize;
+    if (ByteToLock > PlayCursor)
+    {
+
+        BytesToWrite = SoundOutput->SecondaryBufferSize - ByteToLock;
+        BytesToWrite += PlayCursor;
+    }
+    else
+    {
+        BytesToWrite = PlayCursor - ByteToLock;
+    }
+    GlobalSecondaryBuffer->Lock(ByteToLock, BytesToWrite, &Region1,
+                                &Region1Size, &Region2, &Region2Size, 0);
+    int16_t *SampleOut = (int16_t *)Region1;
+    DWORD Region1SampleCount = Region1Size / SoundOutput->BytesPerSample;
+    DWORD Region2SampleCount = Region2Size / SoundOutput->BytesPerSample;
+    for (DWORD SampleIndex = 0; SampleIndex < Region1SampleCount; ++SampleIndex)
+    {
+        float t = 2.0f * Pi32 * (float)SoundOutput->RunningSampleIndex /
+                  (float)SoundOutput->WavePeriod;
+        float SineValue = sinf(t);
+        int16_t SampleValue = (int16_t)(SineValue * SoundOutput->ToneVolume);
+        *SampleOut++ = SampleValue;
+        *SampleOut++ = SampleValue;
+        ++SoundOutput->RunningSampleIndex;
+    }
+
+    for (DWORD SampleIndex = 0; SampleIndex < Region2SampleCount; ++SampleIndex)
+    {
+        float t = 2.0f * Pi32 * (float)SoundOutput->RunningSampleIndex /
+                  (float)SoundOutput->WavePeriod;
+        float SineValue = sinf(t);
+        int16_t SampleValue = (int16_t)(SineValue * SoundOutput->ToneVolume);
+        *SampleOut++ = SampleValue;
+        *SampleOut++ = SampleValue;
+        ++SoundOutput->RunningSampleIndex;
+    }
+
+    GlobalSecondaryBuffer->Unlock(Region1, Region1Size, Region2, Region2Size);
 }
 
 int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance,
@@ -627,23 +393,25 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance,
     }
 
     ShowWindow(hwnd, ShowCommand);
-
-    GlobalRunning = true;
-    int SamplesPerSecond = 48000;
     int XOffset = 0;
     int YOffset = 0;
-    uint32_t RunningSampleIndex = 0;
-    int Hz = 256;
-    int16_t ToneVolume = 3000;
-    int SquareWaveCounter = 0;
-    int SquareWavePeriod = SamplesPerSecond / Hz;
-    int BytesPerSample = sizeof(int16_t) * 2;
-    int SecondaryBufferSize = SamplesPerSecond * BytesPerSample;
-    Win32InitDSound(hwnd, SamplesPerSecond, SecondaryBufferSize);
-    // GlobalSecondaryBuffer->Play(0, 0, DSBPLAY_LOOPING);
-    IXAudio2 *pIXAudio;
-    Win32InitXAudio2(hwnd, &pIXAudio);
-    std::thread AudioThread(XAudioThread, hwnd, pIXAudio);
+
+    GlobalRunning = true;
+
+    win32_sound_output SoundOutput{};
+    SoundOutput.SamplesPerSecond = 48000;
+    SoundOutput.ToneHz = 256;
+    SoundOutput.ToneVolume = 3000;
+    SoundOutput.RunningSampleIndex = 0;
+    SoundOutput.WavePeriod = SoundOutput.SamplesPerSecond / SoundOutput.ToneHz;
+    SoundOutput.BytesPerSample = sizeof(int16_t) * 2;
+    SoundOutput.SecondaryBufferSize =
+        SoundOutput.SamplesPerSecond * SoundOutput.BytesPerSample;
+
+    Win32InitDSound(hwnd, SoundOutput.SamplesPerSecond,
+                    SoundOutput.SecondaryBufferSize);
+    Win32FillSoundBuffer(&SoundOutput, 0, SoundOutput.SecondaryBufferSize);
+    GlobalSecondaryBuffer->Play(0, 0, DSBPLAY_LOOPING);
     while (GlobalRunning)
     {
 
@@ -690,65 +458,31 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance,
             }
         }
         RenderWeirdGradient(&GlobalBackBuffer, XOffset, YOffset);
-
         DWORD PlayCursor;
         DWORD WriteCursor;
 
-        GlobalSecondaryBuffer->GetCurrentPosition(&PlayCursor, &WriteCursor);
-        VOID *Region1;
-        DWORD Region1Size;
-        VOID *Region2;
-        DWORD Region2Size;
-        DWORD BytesToWrite;
-        DWORD ByteToLock =
-            RunningSampleIndex * BytesPerSample % SecondaryBufferSize;
-        if (ByteToLock > PlayCursor)
+        if (SUCCEEDED(GlobalSecondaryBuffer->GetCurrentPosition(&PlayCursor,
+                                                                &WriteCursor)))
         {
-
-            BytesToWrite = SecondaryBufferSize - ByteToLock;
-            BytesToWrite += PlayCursor;
-        }
-        else
-        {
-            BytesToWrite = PlayCursor - ByteToLock;
-        }
-        GlobalSecondaryBuffer->Lock(ByteToLock, BytesToWrite, &Region1,
-                                    &Region1Size, &Region2, &Region2Size, 0);
-        int16_t *SampleOut = (int16_t *)Region1;
-        DWORD Region1SampleCount = Region1Size / BytesPerSample;
-        DWORD Region2SampleCount = Region2Size / BytesPerSample;
-        for (DWORD SampleIndex = 0; SampleIndex < Region1SampleCount;
-             ++SampleIndex)
-        {
-            if (SquareWaveCounter)
+            DWORD ByteToLock = SoundOutput.RunningSampleIndex *
+                               SoundOutput.BytesPerSample %
+                               SoundOutput.SecondaryBufferSize;
+            DWORD BytesToWrite;
+            if (PlayCursor == WriteCursor)
             {
-                SquareWaveCounter = SquareWavePeriod;
+                BytesToWrite = 0;
             }
-            int16_t SampleValue =
-                ((RunningSampleIndex / (SquareWavePeriod / 2)) % 2)
-                    ? ToneVolume
-                    : -ToneVolume;
-            *SampleOut++ = SampleValue;
-            *SampleOut++ = SampleValue;
-            ++RunningSampleIndex;
-        }
-        for (DWORD SampleIndex = 0; SampleIndex < Region2SampleCount;
-             ++SampleIndex)
-        {
-            if (SquareWaveCounter)
+            else if (ByteToLock > PlayCursor)
             {
-                SquareWaveCounter = SquareWavePeriod;
+                BytesToWrite = (SoundOutput.SecondaryBufferSize - ByteToLock);
+                BytesToWrite += PlayCursor;
             }
-            int16_t SampleValue =
-                ((RunningSampleIndex / (SquareWavePeriod / 2)) % 2)
-                    ? ToneVolume
-                    : -ToneVolume;
-            *SampleOut++ = SampleValue;
-            *SampleOut++ = SampleValue;
-            ++RunningSampleIndex;
+            else
+            {
+                BytesToWrite = PlayCursor - ByteToLock;
+            }
+            Win32FillSoundBuffer(&SoundOutput, ByteToLock, BytesToWrite);
         }
-        GlobalSecondaryBuffer->Unlock(Region1, Region1Size, Region2,
-                                      Region2Size);
         HDC DeviceContext = GetDC(hwnd);
         RECT ClientRect;
         win32_window_dimension Dimension = Win32GetWindowDimension(hwnd);
