@@ -358,7 +358,8 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance,
                      PSTR CommandLine, int ShowCommand)
 {
     // Register the window class.
-
+    AllocConsole();
+    freopen_s((FILE **)stdout, "CONOUT$", "w", stdout);
     WNDCLASS wc = {}; // Zero out the memory.
 
     Win32ResizeDIBSection(&GlobalBackBuffer, 1280, 720);
@@ -412,8 +413,14 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance,
                     SoundOutput.SecondaryBufferSize);
     Win32FillSoundBuffer(SoundOutput, 0, SoundOutput.SecondaryBufferSize);
     GlobalSecondaryBuffer->Play(0, 0, DSBPLAY_LOOPING);
+    LARGE_INTEGER Start;
+    LARGE_INTEGER End;
+    LARGE_INTEGER PerfCountFrequency;
+    QueryPerformanceFrequency(&PerfCountFrequency);
+    uint64_t LastCycleCount = __rdtsc();
     while (GlobalRunning)
     {
+        QueryPerformanceCounter(&Start);
 
         MSG msg = {};
         while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
@@ -505,6 +512,17 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance,
         {
             --XOffset;
         }
+        uint64_t EndCycleCount = __rdtsc();
+        uint64_t CyclesElapsed = EndCycleCount - LastCycleCount;
+        LastCycleCount = EndCycleCount;
+        float MCPF = (float)CyclesElapsed / (1000.0f * 1000.0f);
+
+        QueryPerformanceCounter(&End);
+        float FPS = PerfCountFrequency.QuadPart /
+                    (float)(End.QuadPart - Start.QuadPart);
+        printf("Time: %f\n", (float)(End.QuadPart - Start.QuadPart) * 1000 /
+                                 (float)PerfCountFrequency.QuadPart);
+        printf("FPS: %f\n", FPS);
     }
 
     return 0;
