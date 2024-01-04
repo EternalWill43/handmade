@@ -10,6 +10,7 @@
 #include <windows.h>
 #include <xaudio2.h>
 
+#include "handmade.cpp"
 #include <Xinput.h>
 
 #define local_persist static
@@ -147,24 +148,6 @@ internal win32_window_dimension Win32GetWindowDimension(HWND Window)
     Result.Width = ClientRect.right - ClientRect.left;
     Result.Height = ClientRect.bottom - ClientRect.top;
     return Result;
-}
-
-internal void RenderWeirdGradient(win32_offscreen_buffer *Buffer, int XOffset,
-                                  int YOffset)
-{
-    uint8 *Row = (uint8 *)Buffer->Memory;
-    for (int Y = 0; Y < Buffer->Height; ++Y)
-    {
-        uint32 *Pixel = (uint32 *)Row;
-        for (int X = 0; X < Buffer->Width; ++X)
-        {
-            uint8 Red = 0;
-            uint8 Green = (uint8)(X + XOffset);
-            uint8 Blue = (uint8)(Y + YOffset);
-            *Pixel++ = ((Red << 16) | (Green << 8) | Blue);
-        }
-        Row += Buffer->Pitch;
-    }
 }
 
 internal void Win32ResizeDIBSection(win32_offscreen_buffer *Buffer, int Width,
@@ -464,7 +447,13 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance,
                 // Controller not available
             }
         }
-        RenderWeirdGradient(&GlobalBackBuffer, XOffset, YOffset);
+        // RenderWeirdGradient(&GlobalBackBuffer, XOffset, YOffset);
+        game_offscreen_buffer Buffer = {};
+        Buffer.Memory = GlobalBackBuffer.Memory;
+        Buffer.Width = GlobalBackBuffer.Width;
+        Buffer.Height = GlobalBackBuffer.Height;
+        Buffer.Pitch = GlobalBackBuffer.Pitch;
+        GameUpdateAndRender(&Buffer);
         DWORD PlayCursor;
         DWORD WriteCursor;
 
