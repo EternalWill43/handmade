@@ -1,5 +1,6 @@
 #pragma once
 #include "handmade.h"
+#include <stdint.h>
 
 static void RenderWeirdGradient(game_offscreen_buffer *Buffer, int XOffset,
                                 int YOffset)
