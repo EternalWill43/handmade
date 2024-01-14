@@ -2,3 +2,4 @@
 *.obj
 *.wav
 .vscode
+*.raddbg

@@ -40,11 +40,13 @@ static void GameOutputSound(const game_sound_output_buffer &SoundBuffer,
     }
 }
 
-static void GameUpdateAndRender(game_offscreen_buffer *Buffer, int XOffset,
-                                int YOffset,
-                                game_sound_output_buffer *SoundBuffer,
-                                int ToneHz)
+static void GameUpdateAndRender(game_input *Input,
+                                game_offscreen_buffer *Buffer,
+                                game_sound_output_buffer *SoundBuffer)
 {
+    static int ToneHz = 256;
+    static int XOffset = 0;
+    static int YOffset = 0;
     GameOutputSound(*SoundBuffer, ToneHz);
     RenderWeirdGradient(Buffer, XOffset, YOffset);
 }
