@@ -487,6 +487,16 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE /*PrevInstance*/,
                 0, SoundOutput.SecondaryBufferSize, MEM_RESERVE | MEM_COMMIT,
                 PAGE_READWRITE);
 
+            game_memory GameMemory = {};
+            GameMemory.PermanentStorageSize = Megabytes(64);
+            GameMemory.TransientStorageSize = Gigabytes(1);
+            GameMemory.PermanentStorage =
+                VirtualAlloc(0, GameMemory.PermanentStorageSize,
+                             MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+            GameMemory.TransientStorage =
+                VirtualAlloc(0, GameMemory.TransientStorageSize,
+                             MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+
             LARGE_INTEGER LastCounter;
             QueryPerformanceCounter(&LastCounter);
             int64_t LastCycleCount = __rdtsc();
@@ -626,7 +636,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE /*PrevInstance*/,
                 Buffer.Width = GlobalBackbuffer.Width;
                 Buffer.Height = GlobalBackbuffer.Height;
                 Buffer.Pitch = GlobalBackbuffer.Pitch;
-                GameUpdateAndRender(&Input, &Buffer, &SoundBuffer);
+                GameUpdateAndRender(&GameMemory, &Input, &Buffer, &SoundBuffer);
 
                 // Note: Direct sound output test
                 if (SoundIsValid)

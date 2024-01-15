@@ -24,7 +24,7 @@ static void GameOutputSound(const game_sound_output_buffer &SoundBuffer,
                             int ToneHz)
 {
     static float tSine = 0.0f;
-    int16_t ToneVolume = 3000;
+    int16_t ToneVolume = 6000;
     int WavePeriod = SoundBuffer.SamplesPerSecond / ToneHz;
 
     int16_t *SampleOut = SoundBuffer.Samples;
@@ -40,10 +40,30 @@ static void GameOutputSound(const game_sound_output_buffer &SoundBuffer,
     }
 }
 
-static void GameUpdateAndRender(game_input *Input,
+static void GameUpdateAndRender(game_memory *Memory, game_input *Input,
                                 game_offscreen_buffer *Buffer,
                                 game_sound_output_buffer *SoundBuffer)
 {
+    Assert(sizeof(game_state) <= Memory->PermanentStorageSize);
+    game_state *GameState = (game_state *)Memory->PermanentStorage;
+    if (!Memory->IsInitialized)
+    {
+        GameState->ToneHz = 256;
+        // uint8_t *Row = (uint8_t *)Buffer->Memory;
+        // for (int Y = 0; Y < Buffer->Height; ++Y)
+        // {
+        //     uint32_t *Pixel = (uint32_t *)Row;
+        //     for (int X = 0; X < Buffer->Width; ++X)
+        //     {
+        //         uint8_t Red = 0;
+        //         uint8_t Green = 0;
+        //         uint8_t Blue = 0;
+        //         *Pixel++ = ((Red << 16) | (Green << 8) | Blue);
+        //     }
+        //     Row += Buffer->Pitch;
+        // }
+        Memory->IsInitialized = true;
+    }
     static int ToneHz = 256;
     static int XOffset = 0;
     static int YOffset = 0;
