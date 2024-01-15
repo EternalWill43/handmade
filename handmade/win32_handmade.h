@@ -2,6 +2,18 @@
 #include <stdint.h>
 #include <windows.h>
 
+#define Assert(Expression)                                                     \
+    if (!(Expression))                                                         \
+    {                                                                          \
+        *(int *)0 = 0;                                                         \
+    }
+
+#define ArraySize(Array) (sizeof(Array) / sizeof((Array)[0]))
+#define Kilobytes(Value) ((Value) * 1024LL)
+#define Megabytes(Value) (Kilobytes(Value) * 1024LL)
+#define Gigabytes(Value) (Megabytes(Value) * 1024LL)
+#define Terabytes(Value) (Gigabytes(Value) * 1024LL)
+
 struct win32_window_dimension
 {
     int Width;
@@ -72,4 +84,20 @@ struct game_controller_input
 struct game_input
 {
     game_controller_input Controllers[5];
+};
+
+struct game_state
+{
+    int ToneHz;
+    int XOffset;
+    int YOffset;
+};
+
+struct game_memory
+{
+    bool IsInitialized;
+    uint64_t PermanentStorageSize;
+    void *PermanentStorage; // NOTE: REQUIRED to be cleared to zero at startup
+    uint64_t TransientStorageSize;
+    void *TransientStorage; // NOTE: REQUIRED to be cleared to zero at startup
 };
