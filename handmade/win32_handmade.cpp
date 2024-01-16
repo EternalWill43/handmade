@@ -71,6 +71,65 @@ global_variable x_input_set_state *XInputSetState_ = XInputSetStateStub;
     HRESULT name(LPCGUID pcGuidDevice, LPDIRECTSOUND *ppDS, LPUNKNOWN pUnkOuter)
 typedef DIRECT_SOUND_CREATE(direct_sound_create);
 
+static void *DEBUGPlatformReadEntireFile(char *Filename)
+{
+    void *Result;
+    HANDLE FileHandle = CreateFileA(Filename, GENERIC_READ, FILE_SHARE_READ, 0,
+                                    OPEN_EXISTING, 0, 0);
+    if (FileHandle != INVALID_HANDLE_VALUE)
+    {
+
+        LARGE_INTEGER FileSize;
+        if (GetFileSizeEx(FileHandle, &FileSize))
+        {
+            Assert(FileSize.QuadPart < 0xFFFFFFFF);
+            Result = VirtualAlloc(0, FileSize.QuadPart,
+                                  MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+            if (Result)
+            {
+                DWORD BytesRead;
+                if (ReadFile(FileHandle, Result, FileSize.QuadPart, &BytesRead,
+                             0) &&
+                    (BytesRead == FileSize.QuadPart))
+                {
+                    // NOTE: Successfully read
+                }
+                else
+                {
+                    // TODO: Logging
+                }
+            }
+        }
+        CloseHandle(FileHandle);
+    }
+    return Result;
+}
+static int DEBUGPlatformWriteEntireFile(char *Filename, uint32_t MemorySize,
+                                        void *Memory)
+{
+    int Result;
+    HANDLE FileHandle =
+        CreateFileA(Filename, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
+    if (FileHandle != INVALID_HANDLE_VALUE)
+    {
+        DWORD *BytesWritten;
+        if (WriteFile(FileHandle, Memory, MemorySize, BytesWritten, 0))
+        {
+            return (*BytesWritten == MemorySize);
+        }
+        else
+        {
+            // TODO: Logging
+        }
+        CloseHandle(FileHandle);
+    }
+}
+
+static void DEBUGPlatformFreeFile(void *Memory)
+{
+    VirtualFree(Memory, 0, MEM_RELEASE);
+}
+
 template <typename T> T abs(T v)
 {
     return (v < 0) ? -v : v;
