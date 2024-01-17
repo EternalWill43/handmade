@@ -71,9 +71,10 @@ global_variable x_input_set_state *XInputSetState_ = XInputSetStateStub;
     HRESULT name(LPCGUID pcGuidDevice, LPDIRECTSOUND *ppDS, LPUNKNOWN pUnkOuter)
 typedef DIRECT_SOUND_CREATE(direct_sound_create);
 
-static void *DEBUGPlatformReadEntireFile(char *Filename)
+#ifdef HANDMADE_INTERNAL
+static debug_read_file_result DEBUGPlatformReadEntireFile(char *Filename)
 {
-    void *Result;
+    debug_read_file_result Result = {};
     HANDLE FileHandle = CreateFileA(Filename, GENERIC_READ, FILE_SHARE_READ, 0,
                                     OPEN_EXISTING, 0, 0);
     if (FileHandle != INVALID_HANDLE_VALUE)
@@ -83,20 +84,22 @@ static void *DEBUGPlatformReadEntireFile(char *Filename)
         if (GetFileSizeEx(FileHandle, &FileSize))
         {
             Assert(FileSize.QuadPart < 0xFFFFFFFF);
-            Result = VirtualAlloc(0, FileSize.QuadPart,
-                                  MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-            if (Result)
+            Result.Contents = VirtualAlloc(
+                0, FileSize.QuadPart, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+            if (Result.Contents)
             {
                 DWORD BytesRead;
-                if (ReadFile(FileHandle, Result, FileSize.QuadPart, &BytesRead,
-                             0) &&
+                if (ReadFile(FileHandle, Result.Contents, FileSize.QuadPart,
+                             &BytesRead, 0) &&
                     (BytesRead == FileSize.QuadPart))
                 {
                     // NOTE: Successfully read
+                    Result.ContentsSize = FileSize.QuadPart;
                 }
                 else
                 {
                     // TODO: Logging
+                    DEBUGPlatformFreeFile(Result.Contents);
                 }
             }
         }
@@ -107,28 +110,31 @@ static void *DEBUGPlatformReadEntireFile(char *Filename)
 static int DEBUGPlatformWriteEntireFile(char *Filename, uint32_t MemorySize,
                                         void *Memory)
 {
-    int Result;
+    int Result = false;
     HANDLE FileHandle =
         CreateFileA(Filename, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
     if (FileHandle != INVALID_HANDLE_VALUE)
     {
-        DWORD *BytesWritten;
-        if (WriteFile(FileHandle, Memory, MemorySize, BytesWritten, 0))
+        DWORD BytesWritten;
+        if (WriteFile(FileHandle, Memory, MemorySize, &BytesWritten, 0))
         {
-            return (*BytesWritten == MemorySize);
+            Result = (BytesWritten == MemorySize);
         }
         else
         {
             // TODO: Logging
+            // NOTE: Something
         }
         CloseHandle(FileHandle);
     }
+    return Result;
 }
 
 static void DEBUGPlatformFreeFile(void *Memory)
 {
     VirtualFree(Memory, 0, MEM_RELEASE);
 }
+#endif
 
 template <typename T> T abs(T v)
 {

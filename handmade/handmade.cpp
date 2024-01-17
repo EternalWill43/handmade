@@ -48,12 +48,17 @@ static void GameUpdateAndRender(game_memory *Memory, game_input *Input,
     game_state *GameState = (game_state *)Memory->PermanentStorage;
     if (!Memory->IsInitialized)
     {
+#if HANDMADE_INTERNAL
         char *Filename = __FILE__;
-        void *FileMemory = DEBUGPlatformReadEntireFile(Filename);
-        if (FileMemory)
+        debug_read_file_result FileMemory =
+            DEBUGPlatformReadEntireFile(Filename);
+        if (FileMemory.Contents)
         {
-            DEBUGPlatformFreeFile(Memory);
+            DEBUGPlatformWriteEntireFile("test.out", FileMemory.ContentsSize,
+                                         FileMemory.Contents);
+            DEBUGPlatformFreeFile(FileMemory.Contents);
         }
+#endif
         GameState->ToneHz = 256;
         Memory->IsInitialized = true;
     }

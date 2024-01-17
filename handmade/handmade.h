@@ -1,5 +1,10 @@
 #if HANDMADE_INTERNAL
-static void *DEBUGPlatformReadEntireFile(char *Filename);
+struct debug_read_file_result
+{
+    uint32_t ContentsSize;
+    void *Contents;
+};
+static debug_read_file_result DEBUGPlatformReadEntireFile(char *Filename);
 static int DEBUGPlatformWriteEntireFile(char *Filename, uint32_t MemorySize,
                                         void *Memory);
 static void DEBUGPlatformFreeFile(void *Memory);
