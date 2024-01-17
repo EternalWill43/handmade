@@ -48,20 +48,18 @@ static void GameUpdateAndRender(game_memory *Memory, game_input *Input,
     game_state *GameState = (game_state *)Memory->PermanentStorage;
     if (!Memory->IsInitialized)
     {
+#if HANDMADE_INTERNAL
+        char *Filename = __FILE__;
+        debug_read_file_result FileMemory =
+            DEBUGPlatformReadEntireFile(Filename);
+        if (FileMemory.Contents)
+        {
+            DEBUGPlatformWriteEntireFile("test.out", FileMemory.ContentsSize,
+                                         FileMemory.Contents);
+            DEBUGPlatformFreeFile(FileMemory.Contents);
+        }
+#endif
         GameState->ToneHz = 256;
-        // uint8_t *Row = (uint8_t *)Buffer->Memory;
-        // for (int Y = 0; Y < Buffer->Height; ++Y)
-        // {
-        //     uint32_t *Pixel = (uint32_t *)Row;
-        //     for (int X = 0; X < Buffer->Width; ++X)
-        //     {
-        //         uint8_t Red = 0;
-        //         uint8_t Green = 0;
-        //         uint8_t Blue = 0;
-        //         *Pixel++ = ((Red << 16) | (Green << 8) | Blue);
-        //     }
-        //     Row += Buffer->Pitch;
-        // }
         Memory->IsInitialized = true;
     }
     static int ToneHz = 256;
