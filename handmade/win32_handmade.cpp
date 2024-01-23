@@ -84,17 +84,17 @@ static debug_read_file_result DEBUGPlatformReadEntireFile(char *Filename)
         if (GetFileSizeEx(FileHandle, &FileSize))
         {
             Assert(FileSize.QuadPart < 0xFFFFFFFF);
+            Result.ContentsSize = SafeTruncateUInt64(FileSize.QuadPart);
             Result.Contents = VirtualAlloc(
                 0, FileSize.QuadPart, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
             if (Result.Contents)
             {
                 DWORD BytesRead;
-                if (ReadFile(FileHandle, Result.Contents, FileSize.QuadPart,
+                if (ReadFile(FileHandle, Result.Contents, Result.ContentsSize,
                              &BytesRead, 0) &&
-                    (BytesRead == FileSize.QuadPart))
+                    (BytesRead == Result.ContentsSize))
                 {
                     // NOTE: Successfully read
-                    Result.ContentsSize = FileSize.QuadPart;
                 }
                 else
                 {
@@ -496,7 +496,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE /*PrevInstance*/,
 {
     LARGE_INTEGER PerfCounterFrequencyResult;
     QueryPerformanceFrequency(&PerfCounterFrequencyResult);
-    int PerfCounterFrequency = PerfCounterFrequencyResult.QuadPart;
+    long long int PerfCounterFrequency = PerfCounterFrequencyResult.QuadPart;
 
     Win32LoadXInput();
     WNDCLASSA WindowClass = {}; // zero initialize
@@ -731,11 +731,12 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE /*PrevInstance*/,
                     EndCounter.QuadPart - LastCounter.QuadPart;
                 int32_t MSPerFrame =
                     (int32_t)(((1000 * CounterElapsed) / PerfCounterFrequency));
-                int32_t FPS = PerfCounterFrequency / CounterElapsed;
+                float FPS = (float)(PerfCounterFrequency / CounterElapsed);
                 int32_t MCPF = (int32_t)(CyclesElapsed / (1000 * 1000));
 
                 char msg[256];
-                sprintf(msg, "%dms/f, %df/s, %dMc/f\n", MSPerFrame, FPS, MCPF);
+                sprintf_s(msg, "%dms/f, %ff/s, %dMc/f\n", MSPerFrame, FPS,
+                          MCPF);
                 OutputDebugStringA(msg);
 
                 LastCounter = EndCounter;

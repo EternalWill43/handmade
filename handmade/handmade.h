@@ -26,6 +26,13 @@ static void DEBUGPlatformFreeFile(void *Memory);
 #define Gigabytes(Value) (Megabytes(Value) * 1024LL)
 #define Terabytes(Value) (Gigabytes(Value) * 1024LL)
 
+inline uint32_t SafeTruncateUInt64(uint64_t value)
+{
+    Assert(value <= 0xFFFFFFFF);
+    uint32_t Result = (uint32_t)value;
+    return Result;
+}
+
 struct game_offscreen_buffer
 {
     void *Memory;
