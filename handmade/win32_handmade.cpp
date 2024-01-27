@@ -376,6 +376,13 @@ internal void Win32ProcessXInputDigitalButton(DWORD XInputButtonState,
         (OldState->EndedDown != NewState->EndedDown) ? 1 : 0;
 }
 
+internal void Win32ProcessKeyboardMessage(game_button_state *NewState,
+                                          bool IsDown)
+{
+    NewState->EndedDown = IsDown;
+    ++NewState->HalfTransitionCount;
+}
+
 LRESULT CALLBACK MainWindowCallback(HWND Window, UINT Message, WPARAM WParam,
                                     LPARAM LParam)
 {
@@ -399,66 +406,6 @@ LRESULT CALLBACK MainWindowCallback(HWND Window, UINT Message, WPARAM WParam,
         case WM_ACTIVATEAPP:
         {
             OutputDebugStringA("WM_ACTIVATEAAPP\n");
-        }
-        break;
-
-        case WM_SYSKEYDOWN:
-        case WM_SYSKEYUP:
-        case WM_KEYDOWN:
-        case WM_KEYUP:
-        {
-            uint32_t VKCode = (uint32_t)WParam;
-            int WasDown = (LParam & (1 << 30)) != 0;
-            int IsDown = (LParam & (1 << 31)) == 0;
-
-            if (WasDown != IsDown)
-            {
-                if (VKCode == 'W')
-                {
-                }
-                else if (VKCode == 'A')
-                {
-                }
-                else if (VKCode == 'S')
-                {
-                }
-                else if (VKCode == 'D')
-                {
-                }
-                else if (VKCode == 'Q')
-                {
-                }
-                else if (VKCode == 'E')
-                {
-                }
-                else if (VKCode == VK_UP)
-                {
-                }
-                else if (VKCode == VK_LEFT)
-                {
-                }
-                else if (VKCode == VK_DOWN)
-                {
-                }
-                else if (VKCode == VK_RIGHT)
-                {
-                }
-                else if (VKCode == VK_ESCAPE)
-                {
-                }
-                else if (VKCode == VK_SPACE)
-                {
-                    OutputDebugStringA("ESCAPE - ");
-                    OutputDebugStringA(WasDown ? "Was DOWN - " : "Was UP   - ");
-                    OutputDebugStringA(IsDown ? "Is  DOWN\n" : "Is UP\n");
-                }
-            }
-
-            int AltKeyWasDown = (LParam & (1 << 29)) != 0;
-            if ((VKCode == VK_F4) && AltKeyWasDown)
-            {
-                GlobalRunning = false;
-            }
         }
         break;
 
@@ -494,6 +441,9 @@ LRESULT CALLBACK MainWindowCallback(HWND Window, UINT Message, WPARAM WParam,
 int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE /*PrevInstance*/,
                      LPSTR /*CommandLine*/, int /*ShowCode*/)
 {
+    AllocConsole();
+    freopen("CONOUT$", "w", stdout);
+    printf("Hi");
     LARGE_INTEGER PerfCounterFrequencyResult;
     QueryPerformanceFrequency(&PerfCounterFrequencyResult);
     long long int PerfCounterFrequency = PerfCounterFrequencyResult.QuadPart;
@@ -576,18 +526,85 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE /*PrevInstance*/,
             {
                 MSG Message;
                 game_input Input = {};
+                game_controller_input *KeyboardController =
+                    &Input.Controllers[0];
                 while (PeekMessage(&Message, 0, 0, 0, PM_REMOVE))
                 {
                     if (Message.message == WM_QUIT)
                     {
                         GlobalRunning = false;
                     }
-                    TranslateMessage(&Message);
-                    DispatchMessageA(&Message);
+                    switch (Message.message)
+                    {
+                        case WM_SYSKEYDOWN:
+                        case WM_SYSKEYUP:
+                        case WM_KEYDOWN:
+                        case WM_KEYUP:
+                        {
+                            uint32_t VKCode = (uint32_t)Message.wParam;
+                            int WasDown = (Message.lParam & (1 << 30)) != 0;
+                            int IsDown = (Message.lParam & (1 << 31)) == 0;
+
+                            if (WasDown != IsDown)
+                            {
+                                if (VKCode == 'W')
+                                {
+                                }
+                                else if (VKCode == 'A')
+                                {
+                                }
+                                else if (VKCode == 'S')
+                                {
+                                }
+                                else if (VKCode == 'D')
+                                {
+                                }
+                                else if (VKCode == 'Q')
+                                {
+                                }
+                                else if (VKCode == 'E')
+                                {
+                                }
+                                else if (VKCode == VK_UP)
+                                {
+                                    Win32ProcessKeyboardMessage(
+                                        &KeyboardController->MoveUp, IsDown);
+                                    printf("Setting Up to %d", IsDown);
+                                }
+                                else if (VKCode == VK_LEFT)
+                                {
+                                    Win32ProcessKeyboardMessage(
+                                        &KeyboardController->MoveLeft, IsDown);
+                                }
+                                else if (VKCode == VK_DOWN)
+                                {
+                                    Win32ProcessKeyboardMessage(
+                                        &KeyboardController->MoveDown, IsDown);
+                                }
+                                else if (VKCode == VK_RIGHT)
+                                {
+                                    Win32ProcessKeyboardMessage(
+                                        &KeyboardController->MoveRight, IsDown);
+                                }
+                                else if (VKCode == VK_ESCAPE)
+                                {
+                                }
+                                else if (VKCode == VK_SPACE)
+                                {
+                                }
+                            }
+                        }
+                        break;
+                        default:
+                        {
+                            TranslateMessage(&Message);
+                            DispatchMessageA(&Message);
+                        }
+                    }
                 }
 
-                // TODO: should we poll this more fdrequently?
-                for (DWORD ControllerIndex = 0;
+                // TODO: should we poll this more frequently?
+                for (DWORD ControllerIndex = 1;
                      ControllerIndex < XUSER_MAX_COUNT; ++ControllerIndex)
                 {
                     XINPUT_STATE ControllerState;
