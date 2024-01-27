@@ -1,6 +1,8 @@
 #pragma once
 #include "handmade.h"
 #include <stdint.h>
+#include <stdio.h>
+#include <windows.h>
 
 static void RenderWeirdGradient(game_offscreen_buffer *Buffer, int XOffset,
                                 int YOffset)
@@ -63,8 +65,14 @@ static void GameUpdateAndRender(game_memory *Memory, game_input *Input,
         Memory->IsInitialized = true;
     }
     static int ToneHz = 256;
-    static int XOffset = 0;
-    static int YOffset = 0;
+    static int XOffset;
+    static int YOffset;
+    if (Input->Controllers[0].MoveUp.EndedDown)
+    {
+        YOffset -= 100;
+        printf("Up ended");
+    }
+
     GameOutputSound(*SoundBuffer, ToneHz);
     RenderWeirdGradient(Buffer, XOffset, YOffset);
 }

@@ -84,17 +84,17 @@ static debug_read_file_result DEBUGPlatformReadEntireFile(char *Filename)
         if (GetFileSizeEx(FileHandle, &FileSize))
         {
             Assert(FileSize.QuadPart < 0xFFFFFFFF);
+            Result.ContentsSize = SafeTruncateUInt64(FileSize.QuadPart);
             Result.Contents = VirtualAlloc(
                 0, FileSize.QuadPart, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
             if (Result.Contents)
             {
                 DWORD BytesRead;
-                if (ReadFile(FileHandle, Result.Contents, FileSize.QuadPart,
+                if (ReadFile(FileHandle, Result.Contents, Result.ContentsSize,
                              &BytesRead, 0) &&
-                    (BytesRead == FileSize.QuadPart))
+                    (BytesRead == Result.ContentsSize))
                 {
                     // NOTE: Successfully read
-                    Result.ContentsSize = FileSize.QuadPart;
                 }
                 else
                 {
@@ -376,6 +376,13 @@ internal void Win32ProcessXInputDigitalButton(DWORD XInputButtonState,
         (OldState->EndedDown != NewState->EndedDown) ? 1 : 0;
 }
 
+internal void Win32ProcessKeyboardMessage(game_button_state *NewState,
+                                          bool IsDown)
+{
+    NewState->EndedDown = IsDown;
+    ++NewState->HalfTransitionCount;
+}
+
 LRESULT CALLBACK MainWindowCallback(HWND Window, UINT Message, WPARAM WParam,
                                     LPARAM LParam)
 {
@@ -399,66 +406,6 @@ LRESULT CALLBACK MainWindowCallback(HWND Window, UINT Message, WPARAM WParam,
         case WM_ACTIVATEAPP:
         {
             OutputDebugStringA("WM_ACTIVATEAAPP\n");
-        }
-        break;
-
-        case WM_SYSKEYDOWN:
-        case WM_SYSKEYUP:
-        case WM_KEYDOWN:
-        case WM_KEYUP:
-        {
-            uint32_t VKCode = (uint32_t)WParam;
-            int WasDown = (LParam & (1 << 30)) != 0;
-            int IsDown = (LParam & (1 << 31)) == 0;
-
-            if (WasDown != IsDown)
-            {
-                if (VKCode == 'W')
-                {
-                }
-                else if (VKCode == 'A')
-                {
-                }
-                else if (VKCode == 'S')
-                {
-                }
-                else if (VKCode == 'D')
-                {
-                }
-                else if (VKCode == 'Q')
-                {
-                }
-                else if (VKCode == 'E')
-                {
-                }
-                else if (VKCode == VK_UP)
-                {
-                }
-                else if (VKCode == VK_LEFT)
-                {
-                }
-                else if (VKCode == VK_DOWN)
-                {
-                }
-                else if (VKCode == VK_RIGHT)
-                {
-                }
-                else if (VKCode == VK_ESCAPE)
-                {
-                }
-                else if (VKCode == VK_SPACE)
-                {
-                    OutputDebugStringA("ESCAPE - ");
-                    OutputDebugStringA(WasDown ? "Was DOWN - " : "Was UP   - ");
-                    OutputDebugStringA(IsDown ? "Is  DOWN\n" : "Is UP\n");
-                }
-            }
-
-            int AltKeyWasDown = (LParam & (1 << 29)) != 0;
-            if ((VKCode == VK_F4) && AltKeyWasDown)
-            {
-                GlobalRunning = false;
-            }
         }
         break;
 
@@ -494,9 +441,12 @@ LRESULT CALLBACK MainWindowCallback(HWND Window, UINT Message, WPARAM WParam,
 int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE /*PrevInstance*/,
                      LPSTR /*CommandLine*/, int /*ShowCode*/)
 {
+    AllocConsole();
+    freopen("CONOUT$", "w", stdout);
+    printf("Hi");
     LARGE_INTEGER PerfCounterFrequencyResult;
     QueryPerformanceFrequency(&PerfCounterFrequencyResult);
-    int PerfCounterFrequency = PerfCounterFrequencyResult.QuadPart;
+    long long int PerfCounterFrequency = PerfCounterFrequencyResult.QuadPart;
 
     Win32LoadXInput();
     WNDCLASSA WindowClass = {}; // zero initialize
@@ -576,18 +526,85 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE /*PrevInstance*/,
             {
                 MSG Message;
                 game_input Input = {};
+                game_controller_input *KeyboardController =
+                    &Input.Controllers[0];
                 while (PeekMessage(&Message, 0, 0, 0, PM_REMOVE))
                 {
                     if (Message.message == WM_QUIT)
                     {
                         GlobalRunning = false;
                     }
-                    TranslateMessage(&Message);
-                    DispatchMessageA(&Message);
+                    switch (Message.message)
+                    {
+                        case WM_SYSKEYDOWN:
+                        case WM_SYSKEYUP:
+                        case WM_KEYDOWN:
+                        case WM_KEYUP:
+                        {
+                            uint32_t VKCode = (uint32_t)Message.wParam;
+                            int WasDown = (Message.lParam & (1 << 30)) != 0;
+                            int IsDown = (Message.lParam & (1 << 31)) == 0;
+
+                            if (WasDown != IsDown)
+                            {
+                                if (VKCode == 'W')
+                                {
+                                }
+                                else if (VKCode == 'A')
+                                {
+                                }
+                                else if (VKCode == 'S')
+                                {
+                                }
+                                else if (VKCode == 'D')
+                                {
+                                }
+                                else if (VKCode == 'Q')
+                                {
+                                }
+                                else if (VKCode == 'E')
+                                {
+                                }
+                                else if (VKCode == VK_UP)
+                                {
+                                    Win32ProcessKeyboardMessage(
+                                        &KeyboardController->MoveUp, IsDown);
+                                    printf("Setting Up to %d", IsDown);
+                                }
+                                else if (VKCode == VK_LEFT)
+                                {
+                                    Win32ProcessKeyboardMessage(
+                                        &KeyboardController->MoveLeft, IsDown);
+                                }
+                                else if (VKCode == VK_DOWN)
+                                {
+                                    Win32ProcessKeyboardMessage(
+                                        &KeyboardController->MoveDown, IsDown);
+                                }
+                                else if (VKCode == VK_RIGHT)
+                                {
+                                    Win32ProcessKeyboardMessage(
+                                        &KeyboardController->MoveRight, IsDown);
+                                }
+                                else if (VKCode == VK_ESCAPE)
+                                {
+                                }
+                                else if (VKCode == VK_SPACE)
+                                {
+                                }
+                            }
+                        }
+                        break;
+                        default:
+                        {
+                            TranslateMessage(&Message);
+                            DispatchMessageA(&Message);
+                        }
+                    }
                 }
 
-                // TODO: should we poll this more fdrequently?
-                for (DWORD ControllerIndex = 0;
+                // TODO: should we poll this more frequently?
+                for (DWORD ControllerIndex = 1;
                      ControllerIndex < XUSER_MAX_COUNT; ++ControllerIndex)
                 {
                     XINPUT_STATE ControllerState;
@@ -731,11 +748,12 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE /*PrevInstance*/,
                     EndCounter.QuadPart - LastCounter.QuadPart;
                 int32_t MSPerFrame =
                     (int32_t)(((1000 * CounterElapsed) / PerfCounterFrequency));
-                int32_t FPS = PerfCounterFrequency / CounterElapsed;
+                float FPS = (float)(PerfCounterFrequency / CounterElapsed);
                 int32_t MCPF = (int32_t)(CyclesElapsed / (1000 * 1000));
 
                 char msg[256];
-                sprintf(msg, "%dms/f, %df/s, %dMc/f\n", MSPerFrame, FPS, MCPF);
+                sprintf_s(msg, "%dms/f, %ff/s, %dMc/f\n", MSPerFrame, FPS,
+                          MCPF);
                 OutputDebugStringA(msg);
 
                 LastCounter = EndCounter;
