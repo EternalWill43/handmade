@@ -383,6 +383,102 @@ internal void Win32ProcessKeyboardMessage(game_button_state *NewState,
     ++NewState->HalfTransitionCount;
 }
 
+internal void
+Win32ProcessPendingMessage(game_controller_input *KeyboardController)
+{
+    MSG Message;
+    while (PeekMessage(&Message, 0, 0, 0, PM_REMOVE))
+    {
+        switch (Message.message)
+        {
+            case WM_QUIT:
+            {
+                GlobalRunning = false;
+            }
+            break;
+            case WM_SYSKEYDOWN:
+            case WM_SYSKEYUP:
+            case WM_KEYDOWN:
+            case WM_KEYUP:
+            {
+                uint32_t VKCode = (uint32_t)Message.wParam;
+                bool WasDown = ((Message.lParam & (1 << 30)) != 0);
+                bool IsDown = ((Message.lParam & (1 << 31)) == 0);
+                if (WasDown != IsDown)
+                {
+                    if (VKCode == 'W')
+                    {
+                        Win32ProcessKeyboardMessage(&KeyboardController->MoveUp,
+                                                    IsDown);
+                    }
+                    else if (VKCode == 'A')
+                    {
+                        Win32ProcessKeyboardMessage(
+                            &KeyboardController->MoveLeft, IsDown);
+                    }
+                    else if (VKCode == 'S')
+                    {
+                        Win32ProcessKeyboardMessage(
+                            &KeyboardController->MoveDown, IsDown);
+                    }
+                    else if (VKCode == 'D')
+                    {
+                        Win32ProcessKeyboardMessage(
+                            &KeyboardController->MoveRight, IsDown);
+                    }
+                    else if (VKCode == 'Q')
+                    {
+                        Win32ProcessKeyboardMessage(
+                            &KeyboardController->LeftShoulder, IsDown);
+                    }
+                    else if (VKCode == 'E')
+                    {
+                        Win32ProcessKeyboardMessage(
+                            &KeyboardController->RightShoulder, IsDown);
+                    }
+                    else if (VKCode == VK_UP)
+                    {
+                        Win32ProcessKeyboardMessage(
+                            &KeyboardController->ActionUp, IsDown);
+                    }
+                    else if (VKCode == VK_LEFT)
+                    {
+                        Win32ProcessKeyboardMessage(
+                            &KeyboardController->ActionLeft, IsDown);
+                    }
+                    else if (VKCode == VK_DOWN)
+                    {
+                        Win32ProcessKeyboardMessage(
+                            &KeyboardController->ActionDown, IsDown);
+                    }
+                    else if (VKCode == VK_RIGHT)
+                    {
+                        Win32ProcessKeyboardMessage(
+                            &KeyboardController->ActionRight, IsDown);
+                    }
+                    else if (VKCode == VK_ESCAPE)
+                    {
+                        Win32ProcessKeyboardMessage(&KeyboardController->Start,
+                                                    IsDown);
+                    }
+                    else if (VKCode == VK_SPACE)
+                    {
+                        Win32ProcessKeyboardMessage(&KeyboardController->Back,
+                                                    IsDown);
+                    }
+                }
+            }
+            break;
+            default:
+            {
+                TranslateMessage(&Message);
+                DispatchMessageA(&Message);
+            }
+            break;
+        }
+    }
+}
+
 LRESULT CALLBACK MainWindowCallback(HWND Window, UINT Message, WPARAM WParam,
                                     LPARAM LParam)
 {
@@ -528,82 +624,9 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE /*PrevInstance*/,
                 game_input Input = {};
                 game_controller_input *KeyboardController =
                     &Input.Controllers[0];
-                while (PeekMessage(&Message, 0, 0, 0, PM_REMOVE))
-                {
-                    if (Message.message == WM_QUIT)
-                    {
-                        GlobalRunning = false;
-                    }
-                    switch (Message.message)
-                    {
-                        case WM_SYSKEYDOWN:
-                        case WM_SYSKEYUP:
-                        case WM_KEYDOWN:
-                        case WM_KEYUP:
-                        {
-                            uint32_t VKCode = (uint32_t)Message.wParam;
-                            int WasDown = (Message.lParam & (1 << 30)) != 0;
-                            int IsDown = (Message.lParam & (1 << 31)) == 0;
 
-                            if (WasDown != IsDown)
-                            {
-                                if (VKCode == 'W')
-                                {
-                                }
-                                else if (VKCode == 'A')
-                                {
-                                }
-                                else if (VKCode == 'S')
-                                {
-                                }
-                                else if (VKCode == 'D')
-                                {
-                                }
-                                else if (VKCode == 'Q')
-                                {
-                                }
-                                else if (VKCode == 'E')
-                                {
-                                }
-                                else if (VKCode == VK_UP)
-                                {
-                                    Win32ProcessKeyboardMessage(
-                                        &KeyboardController->MoveUp, IsDown);
-                                    printf("Setting Up to %d", IsDown);
-                                }
-                                else if (VKCode == VK_LEFT)
-                                {
-                                    Win32ProcessKeyboardMessage(
-                                        &KeyboardController->MoveLeft, IsDown);
-                                }
-                                else if (VKCode == VK_DOWN)
-                                {
-                                    Win32ProcessKeyboardMessage(
-                                        &KeyboardController->MoveDown, IsDown);
-                                }
-                                else if (VKCode == VK_RIGHT)
-                                {
-                                    Win32ProcessKeyboardMessage(
-                                        &KeyboardController->MoveRight, IsDown);
-                                }
-                                else if (VKCode == VK_ESCAPE)
-                                {
-                                }
-                                else if (VKCode == VK_SPACE)
-                                {
-                                }
-                            }
-                        }
-                        break;
-                        default:
-                        {
-                            TranslateMessage(&Message);
-                            DispatchMessageA(&Message);
-                        }
-                    }
-                }
+                Win32ProcessPendingMessage(KeyboardController);
 
-                // TODO: should we poll this more frequently?
                 for (DWORD ControllerIndex = 1;
                      ControllerIndex < XUSER_MAX_COUNT; ++ControllerIndex)
                 {
