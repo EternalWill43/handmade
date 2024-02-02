@@ -383,6 +383,23 @@ internal void Win32ProcessKeyboardMessage(game_button_state *NewState,
     ++NewState->HalfTransitionCount;
 }
 
+internal float Win32ProcessXInputStickValue(SHORT Value,
+                                            SHORT DeadZoneThreshold)
+{
+    float Result = 0;
+    if (Value < -DeadZoneThreshold)
+    {
+        Result = (float)((Value + DeadZoneThreshold) /
+                         (32768.0f - DeadZoneThreshold));
+    }
+    else if (Value > DeadZoneThreshold)
+    {
+        Result = (float)((Value - DeadZoneThreshold) /
+                         (32767.0f - DeadZoneThreshold));
+    }
+    return Result;
+}
+
 internal void
 Win32ProcessPendingMessage(game_controller_input *KeyboardController)
 {
@@ -618,18 +635,27 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE /*PrevInstance*/,
             LARGE_INTEGER LastCounter;
             QueryPerformanceCounter(&LastCounter);
             int64_t LastCycleCount = __rdtsc();
+            game_input Input[2] = {};
+            game_input *NewInput = &Input[0];
+            game_input *OldInput = &Input[1];
             while (GlobalRunning)
             {
                 MSG Message;
-                game_input Input = {};
-                game_controller_input *KeyboardController =
-                    &Input.Controllers[0];
+                game_controller_input *OldKeyboardController =
+                    GetController(OldInput, 0);
+                game_controller_input *NewKeyboardController =
+                    GetController(NewInput, 0);
+                *NewKeyboardController = {};
 
-                Win32ProcessPendingMessage(KeyboardController);
+                Win32ProcessPendingMessage(NewKeyboardController);
 
                 for (DWORD ControllerIndex = 1;
                      ControllerIndex < XUSER_MAX_COUNT; ++ControllerIndex)
                 {
+                    game_controller_input *OldController =
+                        GetController(OldInput, ControllerIndex);
+                    game_controller_input *NewController =
+                        GetController(NewInput, ControllerIndex);
                     XINPUT_STATE ControllerState;
                     if (XInputGetState(ControllerIndex, &ControllerState) ==
                         ERROR_SUCCESS)
@@ -637,72 +663,92 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE /*PrevInstance*/,
                         // NOTE: controller is plugged in
                         // TODO: see if controlerState.dwPacketNumber increments
                         // too rapidly
+                        NewController->IsConnected = true;
                         XINPUT_GAMEPAD *Pad = &ControllerState.Gamepad;
+                        NewController->IsAnalog = true;
+                        NewController->StickAverageX =
+                            Win32ProcessXInputStickValue(
+                                Pad->sThumbLX,
+                                XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
+                        NewController->StickAverageY =
+                            Win32ProcessXInputStickValue(
+                                Pad->sThumbLY,
+                                XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
+
+                        if (NewController->StickAverageX != 0.0f ||
+                            NewController->StickAverageY != 0.0f)
+                        {
+                            NewController->IsAnalog = true;
+                        }
+
+                        if (Pad->wButtons & XINPUT_GAMEPAD_DPAD_UP)
+                        {
+                            NewController->StickAverageY = 1.0f;
+                            NewController->IsAnalog = false;
+                        }
+                        if (Pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN)
+                        {
+                            NewController->StickAverageY = -1.0f;
+                            NewController->IsAnalog = false;
+                        }
+                        if (Pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT)
+                        {
+                            NewController->StickAverageX = -1.0f;
+                            NewController->IsAnalog = false;
+                        }
+                        if (Pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT)
+                        {
+                            NewController->StickAverageX = 1.0f;
+                            NewController->IsAnalog = false;
+                        }
+                        float Threshold = 0.5f;
+                        Win32ProcessXInputDigitalButton(
+                            (NewController->StickAverageX < -Threshold) ? 1 : 0,
+                            &OldController->MoveLeft, 1,
+                            &NewController->MoveLeft);
+                        Win32ProcessXInputDigitalButton(
+                            (NewController->StickAverageX > Threshold) ? 1 : 0,
+                            &OldController->MoveRight, 1,
+                            &NewController->MoveRight);
+                        Win32ProcessXInputDigitalButton(
+                            (NewController->StickAverageY < -Threshold) ? 1 : 0,
+                            &OldController->MoveDown, 1,
+                            &NewController->MoveDown);
+                        Win32ProcessXInputDigitalButton(
+                            (NewController->StickAverageY > Threshold) ? 1 : 0,
+                            &OldController->MoveUp, 1, &NewController->MoveUp);
 
                         Win32ProcessXInputDigitalButton(
-                            Pad->wButtons,
-                            &Input.Controllers[ControllerIndex].MoveUp,
-                            XINPUT_GAMEPAD_DPAD_UP,
-                            &Input.Controllers[ControllerIndex].MoveUp);
+                            Pad->wButtons, &OldController->ActionDown,
+                            XINPUT_GAMEPAD_A, &NewController->ActionDown);
                         Win32ProcessXInputDigitalButton(
-                            Pad->wButtons,
-                            &Input.Controllers[ControllerIndex].MoveDown,
-                            XINPUT_GAMEPAD_DPAD_DOWN,
-                            &Input.Controllers[ControllerIndex].MoveDown);
+                            Pad->wButtons, &OldController->ActionRight,
+                            XINPUT_GAMEPAD_B, &NewController->ActionRight);
                         Win32ProcessXInputDigitalButton(
-                            Pad->wButtons,
-                            &Input.Controllers[ControllerIndex].MoveLeft,
-                            XINPUT_GAMEPAD_DPAD_LEFT,
-                            &Input.Controllers[ControllerIndex].MoveLeft);
+                            Pad->wButtons, &OldController->ActionLeft,
+                            XINPUT_GAMEPAD_X, &NewController->ActionLeft);
                         Win32ProcessXInputDigitalButton(
-                            Pad->wButtons,
-                            &Input.Controllers[ControllerIndex].MoveRight,
-                            XINPUT_GAMEPAD_DPAD_RIGHT,
-                            &Input.Controllers[ControllerIndex].MoveRight);
+                            Pad->wButtons, &OldController->ActionUp,
+                            XINPUT_GAMEPAD_Y, &NewController->ActionUp);
                         Win32ProcessXInputDigitalButton(
-                            Pad->wButtons,
-                            &Input.Controllers[ControllerIndex].ActionUp,
-                            XINPUT_GAMEPAD_A,
-                            &Input.Controllers[ControllerIndex].ActionUp);
-                        Win32ProcessXInputDigitalButton(
-                            Pad->wButtons,
-                            &Input.Controllers[ControllerIndex].ActionDown,
-                            XINPUT_GAMEPAD_B,
-                            &Input.Controllers[ControllerIndex].ActionDown);
-                        Win32ProcessXInputDigitalButton(
-                            Pad->wButtons,
-                            &Input.Controllers[ControllerIndex].ActionLeft,
-                            XINPUT_GAMEPAD_X,
-                            &Input.Controllers[ControllerIndex].ActionLeft);
-                        Win32ProcessXInputDigitalButton(
-                            Pad->wButtons,
-                            &Input.Controllers[ControllerIndex].ActionRight,
-                            XINPUT_GAMEPAD_Y,
-                            &Input.Controllers[ControllerIndex].ActionRight);
-                        Win32ProcessXInputDigitalButton(
-                            Pad->wButtons,
-                            &Input.Controllers[ControllerIndex].LeftShoulder,
+                            Pad->wButtons, &OldController->LeftShoulder,
                             XINPUT_GAMEPAD_LEFT_SHOULDER,
-                            &Input.Controllers[ControllerIndex].LeftShoulder);
+                            &NewController->LeftShoulder);
                         Win32ProcessXInputDigitalButton(
-                            Pad->wButtons,
-                            &Input.Controllers[ControllerIndex].RightShoulder,
+                            Pad->wButtons, &OldController->RightShoulder,
                             XINPUT_GAMEPAD_RIGHT_SHOULDER,
-                            &Input.Controllers[ControllerIndex].RightShoulder);
+                            &NewController->RightShoulder);
                         Win32ProcessXInputDigitalButton(
-                            Pad->wButtons,
-                            &Input.Controllers[ControllerIndex].Start,
-                            XINPUT_GAMEPAD_START,
-                            &Input.Controllers[ControllerIndex].Start);
+                            Pad->wButtons, &OldController->Start,
+                            XINPUT_GAMEPAD_START, &NewController->Start);
                         Win32ProcessXInputDigitalButton(
-                            Pad->wButtons,
-                            &Input.Controllers[ControllerIndex].Back,
-                            XINPUT_GAMEPAD_BACK,
-                            &Input.Controllers[ControllerIndex].Back);
+                            Pad->wButtons, &OldController->Back,
+                            XINPUT_GAMEPAD_BACK, &NewController->Back);
                     }
                     else
                     {
                         // NOTE: the controller is not available
+                        NewController->IsConnected = false;
                     }
                 }
 
@@ -748,7 +794,8 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE /*PrevInstance*/,
                 Buffer.Width = GlobalBackbuffer.Width;
                 Buffer.Height = GlobalBackbuffer.Height;
                 Buffer.Pitch = GlobalBackbuffer.Pitch;
-                GameUpdateAndRender(&GameMemory, &Input, &Buffer, &SoundBuffer);
+                GameUpdateAndRender(&GameMemory, NewInput, &Buffer,
+                                    &SoundBuffer);
 
                 // Note: Direct sound output test
                 if (SoundIsValid)
