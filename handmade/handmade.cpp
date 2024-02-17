@@ -27,7 +27,7 @@ static void GameOutputSound(const game_sound_output_buffer &SoundBuffer,
 {
     static float tSine = 0.0f;
     int16_t ToneVolume = 6000;
-    int WavePeriod = SoundBuffer.SamplesPerSecond / ToneHz;
+    int WavePeriod = SoundBuffer.SamplesPerSecond / (ToneHz ? ToneHz : -1);
 
     int16_t *SampleOut = SoundBuffer.Samples;
     for (int SampleIndex = 0; SampleIndex < SoundBuffer.SampleCount;
@@ -69,10 +69,24 @@ static void GameUpdateAndRender(game_memory *Memory, game_input *Input,
     static int YOffset;
     if (Input->Controllers[0].MoveUp.EndedDown)
     {
-        YOffset -= 100;
-        printf("Up ended");
+        YOffset -= 3;
+        ToneHz = max(ToneHz - 1, -4000);
     }
-
+    if (Input->Controllers[0].MoveDown.EndedDown)
+    {
+        YOffset += 3;
+        ToneHz = min(ToneHz + 1, 4000);
+    }
+    if (Input->Controllers[0].MoveLeft.EndedDown)
+    {
+        XOffset -= 3;
+        ToneHz = max(ToneHz - 1, -4000);
+    }
+    if (Input->Controllers[0].MoveRight.EndedDown)
+    {
+        XOffset += 3;
+        ToneHz = min(ToneHz + 1, 4000);
+    }
     GameOutputSound(*SoundBuffer, ToneHz);
     RenderWeirdGradient(Buffer, XOffset, YOffset);
 }
