@@ -1,9 +1,23 @@
 #if HANDMADE_INTERNAL
-struct debug_read_file_result
+
+typedef struct debug_read_file_result
 {
-    uint32_t ContentsSize;
+    uint32 ContentsSize;
     void *Contents;
-};
+} debug_read_file_result;
+
+#define DEBUG_PLATFORM_FREE_FILE_MEMORY(name) void name(void *Memory)
+typedef DEBUG_PLATFORM_FREE_FILE_MEMORY(debug_platform_free_file_memory);
+
+#define DEBUG_PLATFORM_READ_ENTIRE_FILE(name)                                  \
+    debug_read_file_result name(char *Filename)
+typedef DEBUG_PLATFORM_READ_ENTIRE_FILE(debug_platform_read_entire_file);
+
+#define DEBUG_PLATFORM_WRITE_ENTIRE_FILE(name)                                 \
+    bool32 name(char *Filename, uint32 MemorySize, void *Memory)
+typedef DEBUG_PLATFORM_WRITE_ENTIRE_FILE(debug_platform_write_entire_file);
+
+#define ARRAY_COUNT(Array) (sizeof(Array) / sizeof((Array)[0]))
 static debug_read_file_result DEBUGPlatformReadEntireFile(char *Filename);
 static int DEBUGPlatformWriteEntireFile(char *Filename, uint32_t MemorySize,
                                         void *Memory);
@@ -100,6 +114,13 @@ struct game_state
     int XOffset;
     int YOffset;
 };
+
+inline game_controller_input *GetController(game_input *Input,
+                                            int ControllerIndex)
+{
+    Assert(ControllerIndex < ArraySize(Input->Controllers));
+    return &Input->Controllers[ControllerIndex];
+}
 
 struct game_memory
 {
