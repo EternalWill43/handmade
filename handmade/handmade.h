@@ -1,3 +1,5 @@
+#pragma once
+#include <cstdint>
 #if HANDMADE_INTERNAL
 
 typedef struct debug_read_file_result
