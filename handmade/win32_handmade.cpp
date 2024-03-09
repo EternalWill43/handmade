@@ -390,6 +390,7 @@ internal void Win32ResizeDIBSection(win32_offscreen_buffer &Buffer, int Width,
     Buffer.Width = Width;
     Buffer.Height = Height;
     int BytesPerPixel = 4;
+    Buffer.BytesPerPixel = 4;
 
     Buffer.Info.bmiHeader.biSize = sizeof(Buffer.Info.bmiHeader);
     Buffer.Info.bmiHeader.biWidth = Buffer.Width;
@@ -567,6 +568,10 @@ Win32ProcessPendingMessages(game_controller_input *KeyboardController)
                         Win32ProcessKeyboardMessage(&KeyboardController->Back,
                                                     IsDown);
                     }
+                    else if (VKCode == 'T')
+                    {
+                        GlobalRunning = false;
+                    }
                 }
 
                 bool32 AltKeyWasDown = (Message.lParam & (1 << 29)) != 0;
@@ -598,6 +603,41 @@ inline float Win32GetSecondsElapsed(LARGE_INTEGER Start, LARGE_INTEGER End)
     return SecondsElapsedForWork;
 }
 
+internal void Win32DebugDrawVertical(win32_offscreen_buffer *GlobalBackBuffer,
+                                     int X, int Top, int Bottom, uint32_t Color)
+{
+    uint8_t *Pixel =
+        ((uint8_t *)GlobalBackBuffer->Memory +
+         X * GlobalBackBuffer->BytesPerPixel + Top * (GlobalBackBuffer->Pitch));
+    for (int Y = Top; Y < Bottom; ++Y)
+    {
+        *(uint32_t *)Pixel = Color;
+        Pixel += GlobalBackBuffer->Pitch;
+    }
+}
+
+internal void Win32DebugSyncDisplay(win32_offscreen_buffer *GlobalBackBuffer,
+                                    int LastPlayCursorCount,
+                                    DWORD *LastPlayCursor,
+                                    win32_sound_output *SoundOutput,
+                                    float SecondsPerFrame)
+{
+    int PadX = 16;
+    int PadY = 16;
+
+    int Top = PadY;
+    int Bottom = GlobalBackBuffer->Height - PadY;
+
+    float C = (float)(GlobalBackBuffer->Width - 2 * PadX) /
+              (float)SoundOutput->SecondaryBufferSize;
+    for (int PlayCursorIndex = 0; PlayCursorIndex < LastPlayCursorCount;
+         ++PlayCursorIndex)
+    {
+        int X = PadX + (int)(C * (float)LastPlayCursor[PlayCursorIndex]);
+        Win32DebugDrawVertical(GlobalBackBuffer, X, Top, Bottom, 0xFFFFFFF);
+    }
+}
+
 int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE /*PrevInstance*/,
                      LPSTR /*CommandLine*/, int /*ShowCode*/)
 {
@@ -605,7 +645,6 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE /*PrevInstance*/,
     {
         FILE *StdOut;
         freopen_s(&StdOut, "CONOUT$", "w", stdout);
-        printf("Hello\n");
     }
     LARGE_INTEGER PerfCounterFrequencyResult;
     QueryPerformanceFrequency(&PerfCounterFrequencyResult);
@@ -626,8 +665,8 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE /*PrevInstance*/,
     WindowClass.lpszClassName = "HandmadeHeroWindowClass";
 
     // TODO: How do we reliably query this on Windows?
-    int MonitorRefreshHz = 60;
-    int GameUpdateHz = MonitorRefreshHz / 2;
+    const int MonitorRefreshHz = 60;
+    const int GameUpdateHz = MonitorRefreshHz / 2;
     float TargetSecondsPerFrame = 1.0f / (float)GameUpdateHz;
 
     if (RegisterClassA(&WindowClass))
@@ -698,6 +737,9 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE /*PrevInstance*/,
                 game_input Input[2] = {};
                 game_input *NewInput = &Input[0];
                 game_input *OldInput = &Input[1];
+
+                int DebugLastPlayCursorIndex = 0;
+                DWORD DebugLastPlayCursor[GameUpdateHz / 2] = {0};
 
                 LARGE_INTEGER LastCounter;
                 QueryPerformanceCounter(&LastCounter);
@@ -930,30 +972,53 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE /*PrevInstance*/,
                     {
                         // TODO: MISSED FRAME RATE!
                     }
+                    LARGE_INTEGER EndCounter = Win32GetWallClock();
+                    LastCounter = EndCounter;
 
                     win32_window_dimension Dimension =
                         Win32GetWindowDimension(Window);
+#if HANDMADE_INTERNAL
+                    Win32DebugSyncDisplay(&GlobalBackbuffer,
+                                          ARRAY_COUNT(DebugLastPlayCursor),
+                                          DebugLastPlayCursor, &SoundOutput,
+                                          TargetSecondsPerFrame);
+#endif
                     Win32DisplayBufferInWindow(GlobalBackbuffer, DeviceContext,
                                                Dimension.Width,
                                                Dimension.Height);
+#if HANDMADE_INTERNAL
+                    {
+                        DWORD TemporaryPlayCursor;
+                        DWORD TemporaryWriteCursor;
+                        GlobalSecondaryBuffer->GetCurrentPosition(
+                            &TemporaryPlayCursor, &TemporaryWriteCursor);
+                        DebugLastPlayCursor[DebugLastPlayCursorIndex++] =
+                            TemporaryPlayCursor;
+                        if (DebugLastPlayCursorIndex >
+                            ARRAY_COUNT(DebugLastPlayCursor))
+                        {
+                            DebugLastPlayCursorIndex = 0;
+                        }
+                    }
+#endif
                     game_input *Temp = NewInput;
                     NewInput = OldInput;
                     OldInput = Temp;
 
-                    LARGE_INTEGER EndCounter = Win32GetWallClock();
-                    LastCounter = EndCounter;
                     int64 EndCycleCount = __rdtsc();
-                    int64 CyclesElapsed = EndCycleCount - LastCycleCount;
                     LastCycleCount = EndCycleCount;
 
+#if 0
                     char msg[256];
                     float MSPerFrame = 1000.0f * Win32GetSecondsElapsed(
                                                      LastCounter, EndCounter);
+                    int64 CyclesElapsed = EndCycleCount - LastCycleCount;
                     float FPS = 0.0f;
                     double MCPF = ((double)CyclesElapsed / (1000.0f * 1000.0f));
                     sprintf_s(msg, "%.02fms/f, %.02ff/s, %.02fMc/f\n",
                               MSPerFrame, FPS, MCPF);
                     printf("%s", msg);
+#endif
                 }
             }
             else

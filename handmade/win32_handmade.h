@@ -16,6 +16,7 @@ struct win32_offscreen_buffer
     int Width;
     int Height;
     int Pitch;
+    int BytesPerPixel;
 };
 
 struct win32_sound_output
