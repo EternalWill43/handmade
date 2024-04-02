@@ -1,12 +1,7 @@
 #pragma once
-#include <stdint.h>
-#include <windows.h>
 
-struct win32_window_dimension
-{
-    int Width;
-    int Height;
-};
+#include <cstdint>
+#include <windows.h>
 
 struct win32_offscreen_buffer
 {
@@ -19,12 +14,31 @@ struct win32_offscreen_buffer
     int BytesPerPixel;
 };
 
+struct win32_window_dimension
+{
+    int Width;
+    int Height;
+};
+
 struct win32_sound_output
 {
     int SamplesPerSecond;
     uint32_t RunningSampleIndex;
     int BytesPerSample;
-    int SecondaryBufferSize;
+    DWORD SecondaryBufferSize;
+    DWORD SafetyBytes;
     float tSine;
     int LatencySampleCount;
+};
+
+struct win32_debug_time_marker
+{
+    DWORD OutputPlayCursor;
+    DWORD OutputWriteCursor;
+    DWORD OutputLocation;
+    DWORD OutputByteCount;
+    DWORD ExpectedFlipPlayCursor;
+
+    DWORD FlipPlayCursor;
+    DWORD FlipWriteCursor;
 };

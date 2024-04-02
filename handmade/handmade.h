@@ -1,61 +1,62 @@
 #pragma once
 #include <cstdint>
-#if HANDMADE_INTERNAL
+#ifndef HANDMADE_H
+#define HANDMADE_H
 
-typedef struct debug_read_file_result
-{
-    uint32 ContentsSize;
-    void *Contents;
-} debug_read_file_result;
+/*
+    NOTE:
 
-#define DEBUG_PLATFORM_FREE_FILE_MEMORY(name) void name(void *Memory)
-typedef DEBUG_PLATFORM_FREE_FILE_MEMORY(debug_platform_free_file_memory);
+    HANDMADE_INTERNAL
+        0 = Build for public release
+        1 = Build for developer only
 
-#define DEBUG_PLATFORM_READ_ENTIRE_FILE(name)                                  \
-    debug_read_file_result name(char *Filename)
-typedef DEBUG_PLATFORM_READ_ENTIRE_FILE(debug_platform_read_entire_file);
+    HANDMADE_SLOW
+        0 = No slow code allowed
+        1 = Slow code allowed!
+*/
 
-#define DEBUG_PLATFORM_WRITE_ENTIRE_FILE(name)                                 \
-    bool32 name(char *Filename, uint32 MemorySize, void *Memory)
-typedef DEBUG_PLATFORM_WRITE_ENTIRE_FILE(debug_platform_write_entire_file);
-
-#define ARRAY_COUNT(Array) (sizeof(Array) / sizeof((Array)[0]))
-static debug_read_file_result DEBUGPlatformReadEntireFile(char *Filename);
-static int DEBUGPlatformWriteEntireFile(char *Filename, uint32_t MemorySize,
-                                        void *Memory);
-static void DEBUGPlatformFreeFile(void *Memory);
-#endif
-
-#if HANDMADE_SLOW
-#define Assert(Expression)                                                     \
-    if (!(Expression))                                                         \
+#if HANDMADE_SLOW == 1
+#define ASSERT(X)                                                              \
+    if (!(X))                                                                  \
     {                                                                          \
         *(int *)0 = 0;                                                         \
     }
 #else
-#define Assert(Expression)
+#define ASSERT(X)
 #endif
 
-#define ArraySize(Array) (sizeof(Array) / sizeof((Array)[0]))
-#define Kilobytes(Value) ((Value) * 1024LL)
-#define Megabytes(Value) (Kilobytes(Value) * 1024LL)
-#define Gigabytes(Value) (Megabytes(Value) * 1024LL)
-#define Terabytes(Value) (Gigabytes(Value) * 1024LL)
+#define KILOBYTES(V) ((V) * 1024LL)
+#define MEGABYTES(V) (KILOBYTES(V) * 1024LL)
+#define GIGABYTES(V) (MEGABYTES(V) * 1024LL)
+#define TERABYTES(V) (GIGABYTES(V) * 1024LL)
+
+#define ARRAY_COUNT(A) (sizeof(A) / sizeof((A)[0]))
 
 inline uint32_t SafeTruncateUInt64(uint64_t value)
 {
-    Assert(value <= 0xFFFFFFFF);
+    ASSERT(value <= 0xFFFFFFFF);
     uint32_t Result = (uint32_t)value;
     return Result;
 }
 
-struct game_offscreen_buffer
+// TODO: Services that the platform layer provides to the game
+
+struct debug_read_file_result
 {
-    void *Memory;
-    int Width;
-    int Height;
-    int Pitch;
+    uint32_t ContentsSize;
+    void *Contents;
 };
+static debug_read_file_result DEBUGPlatformReadEntireFile(char *Filename);
+static void DEBUGPlatformFreeFileMemory(void *Memory);
+static int DEBUGPlatformWriteEntireFile(char *Filename, uint32_t MemorySize,
+                                        void *Memory);
+
+/*
+//NOTE: Services that the game provides to the platform layer
+        (this may extando in the future - sound on separare thread, etc. )
+*/
+// Four Things - timing, controller/keyboar input, bitmap buffer to use, sound
+// buffer to use
 
 struct game_sound_output_buffer
 {
@@ -64,16 +65,27 @@ struct game_sound_output_buffer
     int16_t *Samples;
 };
 
+// TODO: I the future, rendering _specifically_ will become a three-tiered
+// abstaction!!
+struct game_offscreen_buffer
+{
+    // NOTE: Pixels are always 32bit wide
+    void *Memory;
+    int Width;
+    int Height;
+    int Pitch;
+};
+
 struct game_button_state
 {
     int HalfTransitionCount;
-    bool EndedDown;
+    int EndedDown;
 };
 
 struct game_controller_input
 {
-    bool IsConnected;
-    bool IsAnalog;
+    int IsConnected;
+    int IsAnalog;
     float StickAverageX;
     float StickAverageY;
 
@@ -95,11 +107,10 @@ struct game_controller_input
             game_button_state LeftShoulder;
             game_button_state RightShoulder;
 
-            game_button_state Back;
             game_button_state Start;
+            game_button_state Back;
 
-            // NOTE: All buttons must be added above this line
-
+            // NOTE: All buttons shuold be added bellow this line
             game_button_state Terminator;
         };
     };
@@ -107,28 +118,41 @@ struct game_controller_input
 
 struct game_input
 {
+    // keyboard is zero
     game_controller_input Controllers[5];
-};
-
-struct game_state
-{
-    int ToneHz;
-    int XOffset;
-    int YOffset;
 };
 
 inline game_controller_input *GetController(game_input *Input,
                                             int ControllerIndex)
 {
-    Assert(ControllerIndex < ArraySize(Input->Controllers));
+    ASSERT(ControllerIndex < ARRAY_COUNT(Input->Controllers));
     return &Input->Controllers[ControllerIndex];
 }
 
 struct game_memory
 {
-    bool IsInitialized;
+    int IsInitialized;
     uint64_t PermanentStorageSize;
     void *PermanentStorage; // NOTE: REQUIRED to be cleared to zero at startup
+
     uint64_t TransientStorageSize;
     void *TransientStorage; // NOTE: REQUIRED to be cleared to zero at startup
 };
+
+static void GameUpdateAndRender(game_memory *Memory,
+                                const game_offscreen_buffer &Buffer,
+                                const game_input &Input);
+
+// NOTE: At the moment, this has to be a very fast function it cannot be more
+// than a millisecond or so.
+static void GameGetSoundSamples(game_memory *Memory,
+                                const game_sound_output_buffer &SoundOutput);
+
+struct game_state
+{
+    float ToneHz;
+    int GreenOffset;
+    int BlueOffset;
+};
+
+#endif // HANDMADE_H
